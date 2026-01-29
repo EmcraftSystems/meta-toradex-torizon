@@ -43,3 +43,13 @@ IMAGE_ROOTFS_EXTRA_SPACE = "0"
 IMAGE_OVERHEAD_FACTOR = "1.0"
 
 BAD_RECOMMENDATIONS += "busybox-syslog"
+
+# Remove post-process commands inherited from torizon_base_image_type.inc that
+# are irrelevant for the initramfs (containers, OTA, and os-release tweaks).
+# This also suppresses the warning about the missing IMAGE_VARIANT with
+# initramfs.
+ROOTFS_POSTPROCESS_COMMAND:remove = "\
+    adjust_container_engines; \
+    gen_bootloader_ota_files; \
+    tweak_os_release_variant; \
+"
