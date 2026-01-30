@@ -31,9 +31,8 @@ do_install:append () {
     install -m 0644 ${WORKDIR}/secondaries.json ${D}${libdir}/sota/secondaries.json
     sed -i "s/@@MACHINE@@/${MACHINE}/g" ${D}${libdir}/sota/secondaries.json
 
-    install -d ${D}${bindir}
-
     if [ "${BL_UPDATE_SUPPORT}" = "1" ]; then
+        install -d ${D}${bindir}
         install -m 0744 ${WORKDIR}/bl_actions.sh ${D}${bindir}/bl_actions.sh
         install -m 0644 ${WORKDIR}/common_actions.sh ${D}${bindir}/common_actions.sh
     fi
@@ -42,6 +41,7 @@ do_install:append () {
 do_install:append:imx-generic-bsp () {
     sed -e 's/@@MACHINE@@/${MACHINE}/' \
         ${WORKDIR}/fuse_actions-in.sh > ${WORKDIR}/fuse_actions.sh
+    install -d ${D}${bindir}
     install -m 0744 ${WORKDIR}/fuse_actions.sh ${D}${bindir}/fuse_actions.sh
 
     local machine="${MACHINE}"
