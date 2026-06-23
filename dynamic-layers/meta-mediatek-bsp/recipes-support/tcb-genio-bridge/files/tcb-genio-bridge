@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# tcb-genio-bridge - apply a torizoncore-builder rootfs customisation to a
+# MediaTek genio-flash image and repack it for genio-flash.
+#
+# torizoncore-builder's raw-image path needs a raw WIC, but the Genio target is
+# delivered as aiotflash.tar wrapping an Android-sparse WIC. This unwraps the
+# tarball, unsparses the system image, runs tcb, re-sparses with the build's
+# 4096-byte block size, and repacks the tarball with only the rootfs changed.
+set -euo pipefail
+
+prog=${0##*/}
+here=$(cd -- "$(dirname -- "$0")" && pwd)
+
+die()  { echo "$prog: error: $*" >&2; exit 1; }
+note() { echo "$prog: $*"; }
+
+usage() {
+    cat <<EOF
+Usage: $prog [-o OUTPUT_TAR] [-f TCBUILD_YAML] [-c CHANGES_DIR] INPUT_TAR
+
+Apply a torizoncore-builder rootfs customisation to a genio-flash image.
+
+  INPUT_TAR        aiotflash.tar produced by the Yocto build (deploy dir)
+  -o OUTPUT_TAR    repacked tarball (default: <INPUT_TAR without .tar>-custom.tar)
+  -f TCBUILD_YAML  tcbuild config (default: tcbuild-genio.yaml beside this script)
+  -c CHANGES_DIR   directory of files to overlay onto the rootfs
+                   (default: ./changes if present)
+
+Requires simg2img/img2simg (android-sdk-libsparse-utils) and torizoncore-builder
+on PATH (override the latter with \$TCB).
+EOF
+}
+
+out=""; yaml="$here/tcbuild-genio.yaml"; changes=""; yaml_default=1
+while getopts ":o:f:c:h" opt; do
+    case $opt in
+        o) out=$OPTARG ;;
+        f) yaml=$OPTARG; yaml_default=0 ;;
+        c) changes=$OPTARG ;;
+        h) usage; exit 0 ;;
+        :) die "option -$OPTARG requires an argument" ;;
+        \?) die "unknown option -$OPTARG" ;;
+    esac
+done
+shift $((OPTIND - 1))
+[ $# -eq 1 ] || { usage >&2; die "exactly one INPUT_TAR is required"; }
+in_tar=$1
+
+TCB=${TCB:-torizoncore-builder}
+
+# Preflight every external tool so the run fails clean, not half-done.
+for t in simg2img img2simg tar; do
+    command -v "$t" >/dev/null 2>&1 \
+        || die "'$t' not found on PATH (install android-sdk-libsparse-utils)"
+done
+command -v "${TCB%% *}" >/dev/null 2>&1 \
+    || die "'$TCB' not found on PATH (source the tcb env-setup, or set \$TCB)"
+[ -f "$in_tar" ] || die "input tarball not found: $in_tar"
+[ -f "$yaml" ]   || die "tcbuild config not found: $yaml"
+[ -n "$changes" ] || { [ -d ./changes ] && changes=./changes; }
+if [ -n "$changes" ]; then
+    [ -d "$changes" ] || die "changes directory not found: $changes"
+elif [ "$yaml_default" -eq 1 ]; then
+    # The shipped config overlays changes/; a custom -f YAML defines its own.
+    die "no customisation supplied: the default config overlays ./changes — pass -c CHANGES_DIR or create ./changes"
+fi
+[ -n "$out" ] || out="${in_tar%.tar}-custom.tar"
+
+work=$(mktemp -d "${TMPDIR:-/tmp}/tcb-genio.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+
+# 1. Unpack the genio-flash tarball (preserve xattrs as the build packed them).
+note "unpacking $in_tar"
+mkdir -p "$work/unpack"
+tar --xattrs --xattrs-include='*' -C "$work/unpack" -xf "$in_tar"
+
+mapfile -t sparse_imgs < <(find "$work/unpack" -name '*.wic.img' -type f)
+[ "${#sparse_imgs[@]}" -ge 1 ] || die "no *.wic.img found inside $in_tar"
+[ "${#sparse_imgs[@]}" -eq 1 ] || die "multiple *.wic.img found inside $in_tar; cannot pick one"
+sparse=${sparse_imgs[0]}
+note "system image: ${sparse#"$work"/unpack/}"
+
+# 2. Unsparse the system image to a raw WIC inside the tcb working dir.
+mkdir -p "$work/tcb"
+if [ -n "$changes" ]; then
+    mkdir -p "$work/tcb/changes"
+    cp -a "$changes/." "$work/tcb/changes/"
+fi
+cp -a "$yaml" "$work/tcb/tcbuild-genio.yaml"
+note "unsparsing system image (simg2img)"
+simg2img "$sparse" "$work/tcb/input.wic"
+
+# 3. Run torizoncore-builder against the raw image. The raw-image input/output
+#    stanzas live in the YAML; tcb rewrites only the otaroot rootfs and copies
+#    the bootloader partition through untouched.
+note "running torizoncore-builder build"
+( cd "$work/tcb" && $TCB build --file tcbuild-genio.yaml )
+[ -f "$work/tcb/output.wic" ] || die "torizoncore-builder produced no output.wic"
+
+# 4. Re-sparse with the build's 4096-byte block size, replacing the image in place.
+note "re-sparsing customised image (img2simg -b 4096)"
+img2simg -b 4096 "$work/tcb/output.wic" "$sparse"
+
+# 5. Repack the tarball; rity.json and the boot chain are untouched.
+note "repacking $out"
+tar --xattrs --xattrs-include='*' --numeric-owner -C "$work/unpack" -cf "$out" .
+
+note "done: $out"
+note "flash with: tar xf $(basename "$out") && cd <dir> && genio-flash system"
