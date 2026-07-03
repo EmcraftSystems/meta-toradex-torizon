@@ -61,9 +61,12 @@ jobs:
           fi
 
           echo "::group::Built images"
-          # ci-poll.sh success manifest: one '>>> <image> <size> <<<' per output
-          # image. Emit real deploy artifacts (flashable images, bootloader,
-          # kernel), skipping symlinks and metadata sidecars.
+          # Success manifest for the dispatcher: one marker line per output
+          # image. Build the marker delimiters from variables on separate lines
+          # so this script's own text (which GitHub echoes into the run log)
+          # does not itself match the dispatcher's marker grep.
+          L='>>>'
+          R='<<<'
           shopt -s nullglob
           for f in "$DEPLOY"/*; do
             [ -f "$f" ] || continue
@@ -72,6 +75,6 @@ jobs:
               *.json|*.manifest|*.spdx.tar.zst|*.env|*.its|*.ld|*-abiversion \
               |*.raw|*.raw-*|fw_env.config*|u-boot-initial-env*|u-boot-version*|rity.json|boot.scr*) continue ;;
             esac
-            printf '>>> %s %s <<<\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)"
+            printf '%s %s %s %s\n' "$L" "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$R"
           done
           echo "::endgroup::"
