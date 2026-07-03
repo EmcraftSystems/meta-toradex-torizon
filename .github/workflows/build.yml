@@ -1,0 +1,77 @@
+name: build
+
+# Torizon OS image build for the ADLINK LEC-MTK-i1200 (MediaTek Genio 1200),
+# driven by /ticket_ci. Dispatched per ticket branch; builds on the self-hosted
+# fra2 runner in the dedicated CI tree against the shared warm sstate cache.
+#
+# workflow_dispatch only — never pull_request — so fork-PR code cannot execute
+# on the self-hosted runner (public-fork safety).
+on:
+  workflow_dispatch:
+
+# One build at a time on the shared CI tree (the single runner already
+# serialises, but make the intent explicit and cancel superseded runs).
+concurrency:
+  group: fra2-adlink-ci
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, fra2]
+    timeout-minutes: 240
+    steps:
+      - name: Build torizon-docker (lec-mtk-i1200-ufs)
+        shell: bash
+        run: |
+          set -uo pipefail
+          TREE=/mnt/volume_fra1_01/torizon/adlink-ci
+          LAYER="$TREE/layers/meta-toradex-torizon"
+          MACHINE=lec-mtk-i1200-ufs
+          BUILDDIR=build-lec-mtk-i1200
+          DEPLOY="$TREE/$BUILDDIR/deploy/images/$MACHINE"
+          REF="$GITHUB_REF_NAME"
+          BBLOG=$(mktemp)
+
+          echo "::group::Checkout $REF in the CI-tree fork layer"
+          git -C "$LAYER" fetch emcraft --prune || exit 1
+          git -C "$LAYER" fetch emcraft "$REF" || { echo "error: ref '$REF' not found on the emcraft remote"; exit 1; }
+          git -C "$LAYER" checkout -f FETCH_HEAD || exit 1
+          git -C "$LAYER" log --oneline -1
+          echo "::endgroup::"
+
+          echo "::group::bitbake torizon-docker"
+          /home/CACHE/bin/torizon-crops-ci "$TREE" \
+            "EULA=1 MACHINE=$MACHINE source setup-environment $BUILDDIR && bitbake torizon-docker" \
+            2>&1 | tee "$BBLOG"
+          rc=${PIPESTATUS[0]}
+          echo "::endgroup::"
+
+          if [ "$rc" -ne 0 ]; then
+            # ci-poll.sh greps the job log for the first lowercase 'error:' with
+            # context; bitbake prints uppercase 'ERROR:', so emit a normalised
+            # 'error:' line and follow it with the failing task log(s) so the
+            # captured excerpt is actionable.
+            echo "error: bitbake torizon-docker failed (rc=$rc) for ref $REF"
+            sed -n 's/^.*log: \(\/[^ ]*\)$/\1/p' "$BBLOG" | sort -u | while read -r lg; do
+              hostlg=${lg/\/workdir/$TREE}
+              echo "----- ${hostlg} -----"
+              tail -40 "$hostlg" 2>/dev/null
+            done
+            exit "$rc"
+          fi
+
+          echo "::group::Built images"
+          # ci-poll.sh success manifest: one '>>> <image> <size> <<<' per output
+          # image. Emit real deploy artifacts (flashable images, bootloader,
+          # kernel), skipping symlinks and metadata sidecars.
+          shopt -s nullglob
+          for f in "$DEPLOY"/*; do
+            [ -f "$f" ] || continue
+            [ -L "$f" ] && continue
+            case "$(basename "$f")" in
+              *.json|*.manifest|*.spdx.tar.zst|*.env|*.its|*.ld|*-abiversion \
+              |*.raw|*.raw-*|fw_env.config*|u-boot-initial-env*|u-boot-version*|rity.json|boot.scr*) continue ;;
+            esac
+            printf '>>> %s %s <<<\n' "$(basename "$f")" "$(du -h "$f" | cut -f1)"
+          done
+          echo "::endgroup::"
