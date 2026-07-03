@@ -40,8 +40,14 @@ jobs:
           echo "::endgroup::"
 
           echo "::group::bitbake torizon-docker"
+          # Clean the image recipe before building. The persistent CI tree
+          # reuses torizon-docker's workdir across dispatches, so its pseudo
+          # database accumulates stale inode->path entries; when a freed inode
+          # is later reused by an rpm temp file during do_rootfs, pseudo aborts
+          # the client (dnf dies with SIGABRT). A fresh workdir per run gives
+          # do_rootfs a clean pseudo db. Deps stay warm in the shared sstate.
           /home/CACHE/bin/torizon-crops-ci "$TREE" \
-            "EULA=1 MACHINE=$MACHINE source setup-environment $BUILDDIR && bitbake torizon-docker" \
+            "EULA=1 MACHINE=$MACHINE source setup-environment $BUILDDIR && bitbake -c clean torizon-docker && bitbake torizon-docker" \
             2>&1 | tee "$BBLOG"
           rc=${PIPESTATUS[0]}
           echo "::endgroup::"
