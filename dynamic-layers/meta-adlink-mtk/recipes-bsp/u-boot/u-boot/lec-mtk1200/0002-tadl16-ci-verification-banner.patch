@@ -1,0 +1,26 @@
+From: Vladimir Khusainov <vlad@emcraft.com>
+Date: Fri, 03 Jul 2026 00:00:00 +0000
+Subject: [PATCH] tadl16: throwaway CI-verification boot banner
+
+Print a one-line banner at the top of main_loop() to force a u-boot
+rebuild and produce an observable artifact when exercising the CI
+workflow. Not for integration - revert with the TADL-16 branch.
+
+Signed-off-by: Vladimir Khusainov <vlad@emcraft.com>
+---
+ common/main.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/common/main.c b/common/main.c
+index ae2aaa0..d002014 100644
+--- a/common/main.c
++++ b/common/main.c
+@@ -42,6 +42,8 @@ void main_loop(void)
+ {
+ 	const char *s;
+ 
++	printf("TADL-16: /ticket_ci verification build\n");
++
+ 	bootstage_mark_name(BOOTSTAGE_ID_MAIN_LOOP, "main_loop");
+ 
+ 	if (IS_ENABLED(CONFIG_VERSION_VARIABLE))

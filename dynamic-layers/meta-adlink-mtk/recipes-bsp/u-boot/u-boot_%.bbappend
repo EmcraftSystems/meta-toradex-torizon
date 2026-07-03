@@ -7,3 +7,4 @@
 FILESEXTRAPATHS:prepend:lec-mtk1200 := "${THISDIR}/${PN}/lec-mtk1200:"
 
 SRC_URI:append:lec-mtk1200 = " file://0001-torizon-restore-distro-boot_targets.patch"
+SRC_URI:append:lec-mtk1200 = " file://0002-tadl16-ci-verification-banner.patch"
