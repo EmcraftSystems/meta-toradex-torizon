@@ -19,7 +19,7 @@ index ae2aaa0..d002014 100644
  {
  	const char *s;
  
-+	printf("TADL-16: /ticket_ci verification build\n");
++	printf("TADL-16: /ticket_ci verification build\n")
 +
  	bootstage_mark_name(BOOTSTAGE_ID_MAIN_LOOP, "main_loop");
  
