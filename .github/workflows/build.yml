@@ -53,12 +53,13 @@ jobs:
           echo "::endgroup::"
 
           if [ "$rc" -ne 0 ]; then
-            # ci-poll.sh greps the job log for the first lowercase 'error:' with
-            # context; bitbake prints uppercase 'ERROR:', so emit a normalised
-            # 'error:' line and follow it with the failing task log(s) so the
-            # captured excerpt is actionable.
+            # Emit a normalised 'error:' line, then tail the failing task log(s)
+            # so ci-poll.sh's excerpt carries the actual compiler / task error.
+            # bitbake announces each failing task's log as
+            # "Logfile of failure stored in: <container-path>"; map /workdir back
+            # to the host tree so tail can read it.
             echo "error: bitbake torizon-docker failed (rc=$rc) for ref $REF"
-            sed -n 's/^.*log: \(\/[^ ]*\)$/\1/p' "$BBLOG" | sort -u | while read -r lg; do
+            sed -n 's/.*Logfile of failure stored in: \(\/[^ ]*\).*/\1/p' "$BBLOG" | sort -u | while read -r lg; do
               hostlg=${lg/\/workdir/$TREE}
               echo "----- ${hostlg} -----"
               tail -40 "$hostlg" 2>/dev/null
