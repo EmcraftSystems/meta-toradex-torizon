@@ -7,3 +7,6 @@
 FILESEXTRAPATHS:prepend:lec-mtk1200 := "${THISDIR}/${PN}/lec-mtk1200:"
 
 SRC_URI:append:lec-mtk1200 = " file://0001-torizon-restore-distro-boot_targets.patch"
+
+# Accept the legacy-format boot.scr (FIT_SIGNATURE defaults LEGACY_IMAGE_FORMAT off).
+SRC_URI:append:lec-mtk1200 = " file://legacy-image-format.cfg"
