@@ -39,7 +39,9 @@ DEPENDS:append:pn-bl2 = " openssl-native"
 # --active in the wks, and is not partition #1). Thread ${distro_bootpart} into
 # boot.scr and otaroot instead of hardcoding the index.
 UBOOT_BOOT_PARTITION_NUMBER = "${distro_bootpart}"
-UENV_EXTRA_CONFIGS = "env set otaroot ${distro_bootpart}"
+# fitImage conf node is conf-<KERNEL_DEVICETREE, '/'->'_'>; point fdtfile/fdt_file at it.
+FITIMAGE_CONF_NODE = "${@d.getVar('KERNEL_DEVICETREE').split()[0].replace('/', '_')}"
+UENV_EXTRA_CONFIGS = "env set otaroot ${distro_bootpart} ; env set fdtfile ${FITIMAGE_CONF_NODE} ; env set fdt_file ${FITIMAGE_CONF_NODE}"
 
 # Device tree deployed into the OSTree boot directory.
 OSTREE_DEVICETREE ?= "mediatek/lec-mtk-i1200-ufs.dtb"
