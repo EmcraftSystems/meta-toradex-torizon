@@ -79,10 +79,14 @@ $$ bitbake torizon-docker
 
 Flash the Device
 ======
-The Genio 1200 is flashed over USB in fastboot/download mode using MediaTek's
+The Genio 1200 is flashed over USB in download mode using MediaTek's
 [genio-tools](https://gitlab.com/mediatek/aiot/bsp/genio-tools). The build
-produces the bootloader (BL2/FIP), GPT layout and the Ostree-based Torizon
-image in the deploy directory.
+leaves the bootloader (BL2/FIP), GPT layout, the Ostree-based Torizon image and
+the `rity.json` flash descriptor in the deploy directory, and also packs the
+same set into a portable genio-flash tarball,
+`torizon-docker-lec-mtk-i1200-ufs.aiotflash.tar`. Flash from the deploy
+directory when the build host is also the flash host; use the tarball to carry
+the image to a separate flash host without copying the whole deploy directory.
 
 Prerequisites
 ------
@@ -93,17 +97,28 @@ $ pip3 install genio-tools
 
 1. Set the 4-position boot DIP switch to `1001` (positions 1-4, where `1` = ON
    and `0` = OFF, i.e. ON-OFF-OFF-ON) to boot from UFS. This same setting is
-   kept for flashing - `genio-flash` puts the board into download mode itself -
-   so it is not changed for the Boot step below. Confirm the switch
+   kept for flashing - the board re-enters USB download mode briefly on each
+   reset - so it is not changed for the Boot step below. Confirm the switch
    labelling/orientation against the I-Pi SMARC 1200 documentation:
    https://docs.ipi.wiki/smarc/ipi-smarc-1200/
-2. Connect the board's USB-C/OTG port to the host and flash from the deploy
-   directory:
+2. Connect the board's micro-USB (OTG) port to the host, then run `genio-flash`.
+   On the build host, run it directly from the deploy directory — all partition
+   images and `rity.json` are already unpacked there:
 ```
 $ cd ~/yocto-workdir/build-lec-mtk-i1200/deploy/images/lec-mtk-i1200-ufs/
 $ genio-flash
 ```
-`genio-flash` puts the board into download mode and writes the bootloader and
+   To flash from a separate host instead, copy just the tarball across, unpack
+   it, and run `genio-flash` from the version-stamped directory it creates:
+```
+$ tar -xf torizon-docker-lec-mtk-i1200-ufs.aiotflash.tar
+$ cd torizon-docker-lec-mtk-i1200-ufs-*/
+$ genio-flash
+```
+`genio-flash` waits for the board's SoC to appear on USB; press the carrier
+reset button (or power-cycle) while it waits, so the board re-enters its brief
+USB download window. The tool's automatic reset is not available on this
+carrier, so this reset is manual. `genio-flash` then writes the bootloader and
 root filesystem to the on-board storage.
 
 Boot
@@ -116,9 +131,9 @@ Boot
    console:
 ```
 ...
-Common Torizon OS 7.x.y-devel-<timestamp> lec-mtk-i1200-ufs ttyS0
+Common Torizon OS 7.x.y-devel-<timestamp> torizon-lec-mtk-i1200-ufs ttyS0
 
-lec-mtk-i1200-ufs login:
+torizon-lec-mtk-i1200-ufs login:
 
 ```
 4. Login to the board using the `torizon/torizon` credentials.
