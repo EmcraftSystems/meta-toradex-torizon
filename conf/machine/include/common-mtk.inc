@@ -46,22 +46,15 @@ UENV_EXTRA_CONFIGS = "env set otaroot ${distro_bootpart} ; env set fdtfile ${FIT
 # Device tree deployed into the OSTree boot directory.
 OSTREE_DEVICETREE ?= "mediatek/lec-mtk-i1200-ufs.dtb"
 
-# --- Firmware / OP-TEE ------------------------------------------------------
-# TODO: trim to what the Torizon image actually needs (the BSP pulls most via
-# MACHINE_EXTRA_RRECOMMENDS).
-IMAGE_INSTALL:append = " \
-    optee-client \
-    linux-firmware-mt8195-scp \
-    linux-firmware-mt8195-sof \
-"
+# --- OP-TEE userspace -------------------------------------------------------
+# tee-supplicant; not pulled in by the BSP, so install it explicitly.
+IMAGE_INSTALL:append = " optee-client"
 
 # --- DRAM calibration (libdram) ---------------------------------------------
 # Without the MediaTek NDA, TF-A links prebuilt libdram, which ships only a
 # "genio-1200-evk" config (no "-ufs"). Use it for the prebuilt path, keep the
-# -ufs name for the NDA source build.
-#
-# CAUTION: this is the EVK calibration, not LEC-MTK-i1200 specific - it unblocks
-# the build, but DRAM stability on hardware must be validated against Adlink's.
+# -ufs name for the NDA source build. This is ADLINK's own vendor default for
+# the module (meta-adlink-mtk's lec-mtk-i1200-ufs.conf sets the same).
 LIBDRAM_BOARD_NAME:lec-mtk1200 = "${@bb.utils.contains('DISTRO_FEATURES', 'nda-mtk', 'genio-1200-evk-ufs', 'genio-1200-evk', d)}"
 
 # --- Image / flash integration ----------------------------------------------
@@ -77,11 +70,13 @@ BBMASK += "meta-adlink-mtk/recipes-rity/"
 BBMASK += "meta-adlink-mtk/recipes-core/board-assets/"
 
 # --- OSTree commit determinism ----------------------------------------------
-# OSTREE_LAYER_REVISION_INFO (each layer's "branch:sha[:modified]") reaches
-# do_image_ostreecommit's basehash via its validate prefunc. Its value tracks
-# the live git state of every layer, and our manually-cloned BSP layers are not
-# stable across parses, making the basehash non-deterministic. It is commit
-# provenance only - exclude it (as torizon_base_image_type.inc already does for
-# the equivalent EXTRA_OSTREE_COMMIT, but not this prefunc reference).
+# OSTREE_LAYER_REVISION_INFO records each layer's branch:sha as OSTree commit
+# metadata (provenance), but it also feeds do_image_ostreecommit's task hash via
+# the validate prefunc. Because it reflects live layer git state, a layer whose
+# checkout is not stable across parses makes the basehash change every parse: the
+# task never hits sstate and the image rebuilds needlessly. This surfaced here
+# with the manually-cloned BSP layer checkouts (meta-mediatek-bsp /
+# meta-adlink-mtk). Exclude it from the hash; it is still computed and written
+# as metadata.
 validate_ostree_layer_revision_info[vardepsexclude] += "OSTREE_LAYER_REVISION_INFO"
 do_image_ostreecommit[vardepsexclude] += "OSTREE_LAYER_REVISION_INFO"
