@@ -46,22 +46,15 @@ UENV_EXTRA_CONFIGS = "env set otaroot ${distro_bootpart} ; env set fdtfile ${FIT
 # Device tree deployed into the OSTree boot directory.
 OSTREE_DEVICETREE ?= "mediatek/lec-mtk-i1200-ufs.dtb"
 
-# --- Firmware / OP-TEE ------------------------------------------------------
-# TODO: trim to what the Torizon image actually needs (the BSP pulls most via
-# MACHINE_EXTRA_RRECOMMENDS).
-IMAGE_INSTALL:append = " \
-    optee-client \
-    linux-firmware-mt8195-scp \
-    linux-firmware-mt8195-sof \
-"
+# --- OP-TEE userspace -------------------------------------------------------
+# tee-supplicant; not pulled in by the BSP, so install it explicitly.
+IMAGE_INSTALL:append = " optee-client"
 
 # --- DRAM calibration (libdram) ---------------------------------------------
 # Without the MediaTek NDA, TF-A links prebuilt libdram, which ships only a
 # "genio-1200-evk" config (no "-ufs"). Use it for the prebuilt path, keep the
-# -ufs name for the NDA source build.
-#
-# CAUTION: this is the EVK calibration, not LEC-MTK-i1200 specific - it unblocks
-# the build, but DRAM stability on hardware must be validated against Adlink's.
+# -ufs name for the NDA source build. This is ADLINK's own vendor default for
+# the module (meta-adlink-mtk's lec-mtk-i1200-ufs.conf sets the same).
 LIBDRAM_BOARD_NAME:lec-mtk1200 = "${@bb.utils.contains('DISTRO_FEATURES', 'nda-mtk', 'genio-1200-evk-ufs', 'genio-1200-evk', d)}"
 
 # --- Image / flash integration ----------------------------------------------
