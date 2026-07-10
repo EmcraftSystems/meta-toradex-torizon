@@ -15,11 +15,14 @@ input:
     rootfs-label: otaroot
 
 customization:
-  # Files overlaid onto the OSTree rootfs. The bridge fills changes/ from its
-  # -c argument (default ./changes). Add package files and prebuilt .ko modules
-  # here; a dropped-in .ko is not depmod-indexed, so load it on the target with
-  # insmod of its full path, not modprobe. Preloaded containers go under
-  # output.raw-image.bundle instead.
+  # Files overlaid onto the OSTree rootfs, mirroring the final filesystem paths.
+  # The bridge fills changes/ from its -c argument (default ./changes). Add
+  # package files (e.g. usr/bin/, usr/lib/) and prebuilt .ko modules here; a
+  # dropped-in .ko is not depmod-indexed, so load it on the target with insmod
+  # of its full path, not modprobe. Config files go under usr/etc/ (the OSTree
+  # factory-config location), NOT a top-level etc/ — a committed /etc collides
+  # with the base /usr/etc and tcb aborts the deploy. Preloaded containers go
+  # under output.raw-image.bundle instead.
   filesystem:
     - changes/
 
@@ -27,3 +30,9 @@ output:
   raw-image:
     local: output.wic
     base-rootfs-label: otaroot
+    # To preload containers, uncomment and provide the compose file to the
+    # bridge with -b (default ./docker-compose.yml). Set platform to the target
+    # arch so tcb pulls the arm64 image, not the build host's.
+    # bundle:
+    #   compose-file: docker-compose.yml
+    #   platform: linux/arm64
