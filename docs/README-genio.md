@@ -140,46 +140,45 @@ torizon-lec-mtk-i1200-ufs login:
 
 Customizing with TorizonCore Builder
 ======
-TorizonCore Builder (TCB) applies rootfs-level changes (added files, Yocto
-packages, preloaded containers, prebuilt kernel modules) to a built image
-without a full Yocto rebuild. The `tcb-genio-bridge` wrapper
-(`dynamic-layers/meta-mediatek-bsp/recipes-support/tcb-genio-bridge/`) adapts
-TCB's raw/WIC contract to the `aiotflash.tar` genio-flash tarball: it unwraps,
-unsparses, runs TCB, re-sparses, and repacks with only the rootfs changed.
-Device-tree, kernel-argument, U-Boot-env, and splash customizations are out of
-scope (TCB rejects them on raw/WIC images).
+The `tcb-genio-bridge` wrapper
+(`dynamic-layers/meta-mediatek-bsp/recipes-support/tcb-genio-bridge/`) applies a
+TorizonCore Builder customization to the genio-flash image. The Genio target
+ships as an `aiotflash.tar` wrapping an Android-sparse WIC, which TCB's raw-image
+path can't read directly, so the bridge unwraps and unsparses the tarball, runs
+TCB against the system image, re-sparses, and repacks it — only the rootfs
+changed, partition layout preserved. Rootfs-level customizations (filesystem
+overlays, preloaded containers) are supported; device-tree, kernel-argument,
+U-Boot-env, and splash edits are not (TCB rejects them on raw/WIC images).
 
-Prerequisites on the host: `simg2img`/`img2simg`
-(`android-sdk-libsparse-utils`) and `torizoncore-builder` on `PATH`.
+Host prerequisites: Docker and `simg2img`/`img2simg`
+(`android-sdk-libsparse-utils`). The bridge runs TCB from its
+`torizon/torizoncore-builder` container image, pulled on first run — no separate
+`torizoncore-builder` install.
 
-1. Build the bridge into the deploy directory:
+Deploy the bridge and collect it beside the image:
 ```
 $$ bitbake tcb-genio-bridge
-```
-2. From the deploy directory, collect the wrapper and config:
-```
 $ cd ~/yocto-workdir/build-lec-mtk-i1200/deploy/images/lec-mtk-i1200-ufs/
 $ cp tcb-genio-bridge/tcb-genio-bridge tcb-genio-bridge/tcbuild-genio.yaml .
 ```
-3. Stage the files to overlay under `changes/`:
+
+Prepare your customization as usual — a `changes/` overlay and/or a container
+`bundle` in `tcbuild-genio.yaml` — then run the bridge against the tarball:
 ```
-$ mkdir -p changes/etc
-$ echo "hello" > changes/etc/hello.txt
+$ ./tcb-genio-bridge -o custom.tar torizon-docker-lec-mtk-i1200-ufs.aiotflash.tar
 ```
-4. Run the bridge (name the output outside the `*.aiotflash.tar` glob):
-```
-$ ./tcb-genio-bridge -o custom.tar *.aiotflash.tar
-```
-   Edit `tcbuild-genio.yaml` for packages, containers, or kernel modules. A
-   `.ko` overlaid this way is not `depmod`-indexed; load it with `insmod` of its
-   full path, not `modprobe`.
-5. Flash the customized tarball (only the rootfs changed):
+For a preloaded container, uncomment the `bundle:` block in `tcbuild-genio.yaml`
+and set `platform: linux/arm64`; the bridge auto-detects `./docker-compose.yml`.
+
+Flash the customized tarball and boot:
 ```
 $ tar xf custom.tar
-$ cd <extracted-dir>
+$ cd torizon-docker-lec-mtk-i1200-ufs-*/
 $ genio-flash system
 ```
-6. Boot and confirm the customization is present.
+
+The bridge rewrites the rootfs partition in place, so the customization must fit
+its free space (about 1 GB on the default image).
 
 References
 ======
