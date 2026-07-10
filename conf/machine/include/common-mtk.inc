@@ -70,11 +70,13 @@ BBMASK += "meta-adlink-mtk/recipes-rity/"
 BBMASK += "meta-adlink-mtk/recipes-core/board-assets/"
 
 # --- OSTree commit determinism ----------------------------------------------
-# OSTREE_LAYER_REVISION_INFO (each layer's "branch:sha[:modified]") reaches
-# do_image_ostreecommit's basehash via its validate prefunc. Its value tracks
-# the live git state of every layer, and our manually-cloned BSP layers are not
-# stable across parses, making the basehash non-deterministic. It is commit
-# provenance only - exclude it (as torizon_base_image_type.inc already does for
-# the equivalent EXTRA_OSTREE_COMMIT, but not this prefunc reference).
+# OSTREE_LAYER_REVISION_INFO records each layer's branch:sha as OSTree commit
+# metadata (provenance), but it also feeds do_image_ostreecommit's task hash via
+# the validate prefunc. Because it reflects live layer git state, a layer whose
+# checkout is not stable across parses makes the basehash change every parse: the
+# task never hits sstate and the image rebuilds needlessly. This surfaced here
+# with the manually-cloned BSP layer checkouts (meta-mediatek-bsp /
+# meta-adlink-mtk). Exclude it from the hash; it is still computed and written
+# as metadata.
 validate_ostree_layer_revision_info[vardepsexclude] += "OSTREE_LAYER_REVISION_INFO"
 do_image_ostreecommit[vardepsexclude] += "OSTREE_LAYER_REVISION_INFO"
