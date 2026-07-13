@@ -139,6 +139,137 @@ torizon-lec-mtk-i1200-ufs login:
 ```
 4. Login to the board using the `torizon/torizon` credentials.
 
+Customizing with TorizonCore Builder
+======
+The Genio target ships as an `aiotflash.tar` wrapping an Android-sparse WIC,
+which TorizonCore Builder's (TCB's) raw-image path can't read directly:
+`genio2img` unwraps and unsparses the tarball so a released
+`torizoncore-builder` can run against the system image directly, and
+`img2genio` re-sparses and repacks the result — only the rootfs changed,
+partition layout preserved. Rootfs-level customizations (filesystem overlays,
+preloaded containers) are supported; device-tree, kernel-argument, U-Boot-env,
+and splash edits are not (TCB rejects them on raw/WIC images). The Genio
+system image is 4Kn, so it needs a `torizoncore-builder` release that can open
+4096-byte-sector raw images, and `android-sdk-libsparse-utils` on the host.
+
+Host prerequisites
+------
+`simg2img`/`img2simg` (`android-sdk-libsparse-utils`) for `genio2img`/
+`img2genio` themselves, and a `torizoncore-builder` release that can open
+4096-byte-sector raw images to customize between them — requested by the
+`sector-size` and `base-sector-size` keys in the tcbuild configuration, or by
+`--raw-sector-size` when driving the command line directly.
+
+Customization classes
+------
+`torizoncore-builder`, run against `genio2img`'s staged `input.wic`, delivers
+rootfs-level content into the OSTree rootfs:
+
+* File and directory overlays — a `changes/` tree staged by `genio2img -c`
+  (default `./changes`), applied per `tcbuild-genio.yaml`'s
+  `customization.filesystem`.
+* Yocto packages delivered as installed files (e.g. `usr/bin/`, `usr/lib/`),
+  through the same overlay mechanism.
+* Prebuilt kernel modules dropped in as `.ko` files.
+* Preloaded containers, from a `docker-compose` bundle staged by
+  `genio2img -b` (default `./docker-compose.yml`; see below).
+
+Command-line reference
+------
+Kept in sync with `genio2img -h`/`img2genio -h`; update both together when a
+flag changes.
+
+```
+$ ./genio2img [-d WORKDIR] [-f TCBUILD_YAML] [-c CHANGES_DIR] [-b COMPOSE_FILE] INPUT_TAR
+```
+
+* `INPUT_TAR` — the `aiotflash.tar` produced by the Yocto build.
+* `-d WORKDIR` — working directory to create (default: `INPUT_TAR`'s
+  basename, `.aiotflash.tar`/`.tar` stripped). Must not already exist.
+* `-f TCBUILD_YAML` — the tcbuild config to stage (default: `tcbuild-genio.yaml`
+  beside the script).
+* `-c CHANGES_DIR` — a directory of files to stage as the rootfs overlay
+  (default: `./changes` if present).
+* `-b COMPOSE_FILE` — the `docker-compose` file for a container-preload bundle
+  (default: `./docker-compose.yml` if present). Its basename must match the
+  tcbuild config's `bundle.compose-file`.
+
+```
+$ ./img2genio [-o OUTPUT_TAR] WORKDIR
+```
+
+* `WORKDIR` — the directory `genio2img` created (must still hold `unpack/`
+  and a customised `output.wic` — `torizoncore-builder`'s
+  `output.raw-image.local`, run from `WORKDIR`).
+* `-o OUTPUT_TAR` — repacked tarball (default: `WORKDIR-custom.tar`).
+
+Performing image customization
+------
+Prepare your customization — a `changes/` overlay, a container bundle, or both
+(see Customization classes above).
+
+The image build deploys the tools beside the flashing artifacts; unpack them
+there:
+```
+$ cd ~/yocto-workdir/build-lec-mtk-i1200/deploy/images/lec-mtk-i1200-ufs/
+$ tar xf genio2img-tools.tar
+$ cp genio2img-tools/genio2img genio2img-tools/img2genio genio2img-tools/tcbuild-genio.yaml .
+```
+
+1. **Convert** the tarball to a raw WIC and stage a customization run:
+```
+$ ./genio2img -d work torizon-docker-lec-mtk-i1200-ufs.aiotflash.tar
+$ cd work
+```
+   Drop overlay files into `changes/` and/or add a `bundle:` block to
+   `tcbuild-genio.yaml` (staged from the copy beside the scripts).
+
+2. **Customize** with `torizoncore-builder`, from inside `work/`:
+```
+$ torizoncore-builder build --file tcbuild-genio.yaml
+```
+
+3. **Convert back** and flash:
+```
+$ cd ..
+$ ./img2genio work
+$ tar xf work-custom.tar
+$ cd torizon-docker-lec-mtk-i1200-ufs-*/
+$ genio-flash system
+```
+
+`work/` can be reused for more than one customization from the same base
+image — rerun steps 2–3 with different overlay/compose content without
+re-running `genio2img`. A preloaded container bundle larger than the base
+rootfs partition's free space (about 0.8 GB on the default image) is handled
+by `torizoncore-builder` growing the output image itself, so it is not a
+limit on the bundle — but the grow makes the run's disk appetite scale with
+the bundle.
+
+Host free space
+------
+
+Each `genio2img` `WORKDIR` holds the unpacked tarball, the unsparsed input
+image, `torizoncore-builder`'s output image, the re-sparsed image and
+`img2genio`'s output tarball at the same time. Budget
+
+    10 x <tarball> + 2 x <unpacked bundle>
+
+on that filesystem. Without a bundle that is the familiar ten-times-the-tarball
+figure; with one the bundle term dominates — measure the bundle's unpacked
+size rather than estimating it (it is roughly three times the pull), e.g. with
+`docker create`/`docker export | wc -c` per image. A 0.70 GiB tarball with an
+8.13 GiB bundle peaked at 18.9 GiB in measurement — against the 7.0 GiB the
+tarball alone would suggest — for which this rule budgets 23.2 GiB.
+
+To work on a different disk, pass `genio2img -d` a `WORKDIR` path there — if
+running `torizoncore-builder` as a container, it must be one the Docker daemon
+can also reach, so with snap-installed Docker keep it under your home.
+
+The container images themselves are fetched into Docker's own storage, which is
+usually on a different filesystem (`docker info` reports `Docker Root Dir`);
+allow for the bundle there as well.
+
 References
 ======
 * MediaTek IoT Yocto developer guide: https://mediatek.gitlab.io/aiot/doc/aiot-dev-guide/master/

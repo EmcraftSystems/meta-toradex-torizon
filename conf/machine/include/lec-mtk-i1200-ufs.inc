@@ -12,3 +12,7 @@ OSTREE_KERNEL_ARGS:append:sota = " console=ttyS0,921600 earlycon root=LABEL=otar
 
 # The board carries a TPM2.0.
 DISTRO_FEATURES:append = " tpm2"
+
+# Build and deploy host-side genio2img/img2genio torizoncore-builder
+# converters alongside the image.
+EXTRA_IMAGEDEPENDS:append = " genio2img-tools"
