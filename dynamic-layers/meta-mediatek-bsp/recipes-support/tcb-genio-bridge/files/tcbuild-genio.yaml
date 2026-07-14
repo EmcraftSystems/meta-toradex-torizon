@@ -13,6 +13,8 @@ input:
     local: input.wic
     # rootfs filesystem label; otaroot is tcb's default for Common Torizon OS.
     rootfs-label: otaroot
+    # The Genio UFS WIC is 4Kn; tcb must open the disk at 4096-byte sectors.
+    sector-size: 4096
 
 customization:
   # Files overlaid onto the OSTree rootfs, mirroring the final filesystem paths.
@@ -30,6 +32,8 @@ output:
   raw-image:
     local: output.wic
     base-rootfs-label: otaroot
+    # Base image is the same 4Kn WIC; keep tcb at 4096-byte sectors on output.
+    base-sector-size: 4096
     # To preload containers, uncomment and provide the compose file to the
     # bridge with -b (default ./docker-compose.yml). Set platform to the target
     # arch so tcb pulls the arm64 image, not the build host's.
