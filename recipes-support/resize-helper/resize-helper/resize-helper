@@ -59,7 +59,13 @@ DEVICE="/dev/${DEVICE}"
 if [ "$PART_TABLE_TYPE" = "gpt" ]; then
 	# sgdisk speaks the device's logical sector size, so the grow is
 	# correct on 4Kn media where blockdev/udev report 512-byte units.
-	START=$(${SGDISK} --info=${PART_ENTRY_NUMBER} ${DEVICE} | awk '/^First sector:/ {print $3}')
+	# Read start and attribute flags before altering the table: the
+	# delete/recreate below resets both, and the attributes carry the
+	# legacy-BIOS-bootable flag (WIC --active) that U-Boot's distro_bootcmd
+	# scan uses to find the rootfs.
+	PART_INFO=$(${SGDISK} --info=${PART_ENTRY_NUMBER} ${DEVICE})
+	START=$(echo "${PART_INFO}" | awk '/^First sector:/ {print $3}')
+	ATTRS=$(echo "${PART_INFO}" | awk '/^Attribute flags:/ {print $3}')
 	# Recreating at an empty or zero start would place the partition at
 	# sgdisk's default offset, not the original, and corrupt the rootfs.
 	case "${START}" in
@@ -73,6 +79,9 @@ if [ "$PART_TABLE_TYPE" = "gpt" ]; then
 	${SGDISK} --delete=${PART_ENTRY_NUMBER} --new=${PART_ENTRY_NUMBER}:${START}:0 ${DEVICE}
 	if [ -n "${PART_ENTRY_NAME}" ]; then
 		${SGDISK} --change-name=${PART_ENTRY_NUMBER}:"${PART_ENTRY_NAME}" ${DEVICE}
+	fi
+	if [ -n "${ATTRS}" ]; then
+		${SGDISK} --attributes=${PART_ENTRY_NUMBER}:=:${ATTRS} ${DEVICE}
 	fi
 else
 	# Use fdisk to repartition
