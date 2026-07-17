@@ -16,7 +16,10 @@ input:
 
 customization:
   # Files overlaid onto the OSTree rootfs, mirroring the final filesystem paths.
-  # The bridge fills changes/ from its -c argument (default ./changes). Add
+  # Several directories may be listed, each named as the bridge stages it — by
+  # the basename of its -c argument (default ./changes, staged as changes/) —
+  # and applied in the order listed. This list decides what is applied: a
+  # directory the bridge stages but this list omits is not overlaid. Add
   # package files (e.g. usr/bin/, usr/lib/) and prebuilt .ko modules here; a
   # dropped-in .ko is not depmod-indexed, so load it on the target with insmod
   # of its full path, not modprobe. Config files go under usr/etc/ (the OSTree
