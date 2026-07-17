@@ -16,40 +16,69 @@ note() { echo "$prog: $*"; }
 
 usage() {
     cat <<EOF
-Usage: $prog [-o OUTPUT_TAR] [-f TCBUILD_YAML] [-c CHANGES_DIR] [-b COMPOSE_FILE] INPUT_TAR
+Usage: $prog [-o OUTPUT_TAR] [-f TCBUILD_YAML] [-c CHANGES_DIR]... [-b COMPOSE_FILE]
+             [-e VAR]... INPUT_TAR [-- TCB_BUILD_ARG...]
 
 Apply a torizoncore-builder rootfs customisation to a genio-flash image.
 
   INPUT_TAR        aiotflash.tar produced by the Yocto build (deploy dir)
   -o OUTPUT_TAR    repacked tarball (default: <INPUT_TAR without .tar>-custom.tar)
   -f TCBUILD_YAML  tcbuild config (default: tcbuild-genio.yaml beside this script)
-  -c CHANGES_DIR   directory of files to overlay onto the rootfs
-                   (default: ./changes if present)
+  -c CHANGES_DIR   directory of files to overlay onto the rootfs. Repeatable;
+                   each directory is staged under its own basename and is listed
+                   in the config's customization.filesystem by that name, so the
+                   basename must be letters, digits, '.', '_' or '-', and must
+                   not begin with '-' (default: ./changes if present).
   -b COMPOSE_FILE  docker-compose file for the container-preload (bundle)
                    customisation (default: ./docker-compose.yml if present).
                    Its basename must match the tcbuild config's
                    bundle.compose-file (default docker-compose.yml).
+  -e VAR           forward VAR's value from the environment to the config's
+                   \${VAR} substitution, as --set VAR=<value>. Repeatable. VAR
+                   must be exported (a plain shell assignment is not enough);
+                   exported-but-empty forwards an empty value.
+
+Everything after -- is appended to the torizoncore-builder build invocation,
+e.g. -- --set PASSWORD=secret. Any option of that command is forwarded, not just
+--set. -e assignments are placed first, so an explicit --set after -- overrides
+an -e of the same variable.
+
+Secrets: torizoncore-builder takes substitution values only via --set, which
+places them in the process argument list, where they are visible in host 'ps'
+output and in 'docker inspect' of the tcb container. Passing -e VAR rather than
+-- --set VAR=... keeps the secret out of shell history, terminal scrollback and
+CI logs, but it does not remove that argument-list exposure.
 
 Requires Docker (runs torizoncore-builder from its container image) and
 simg2img/img2simg (android-sdk-libsparse-utils).
 EOF
 }
 
-out=""; yaml="$here/tcbuild-genio.yaml"; changes=""; compose=""; yaml_default=1
-while getopts ":o:f:c:b:h" opt; do
+out=""; yaml="$here/tcbuild-genio.yaml"; compose=""; yaml_default=1
+changes_dirs=(); env_vars=()
+while getopts ":o:f:c:b:e:h" opt; do
     case $opt in
         o) out=$OPTARG ;;
         f) yaml=$OPTARG; yaml_default=0 ;;
-        c) changes=$OPTARG ;;
+        c) changes_dirs+=("$OPTARG") ;;
         b) compose=$OPTARG ;;
+        e) env_vars+=("$OPTARG") ;;
         h) usage; exit 0 ;;
         :) die "option -$OPTARG requires an argument" ;;
         \?) die "unknown option -$OPTARG" ;;
     esac
 done
 shift $((OPTIND - 1))
-[ $# -eq 1 ] || { usage >&2; die "exactly one INPUT_TAR is required"; }
-in_tar=$1
+[ $# -ge 1 ] || { usage >&2; die "exactly one INPUT_TAR is required"; }
+in_tar=$1; shift
+# Trailing tcb arguments must be introduced by --, so a stray second operand
+# stays a bridge diagnostic instead of reaching tcb as a stray build argument.
+if [ $# -gt 0 ]; then
+    [ "$1" = "--" ] \
+        || { usage >&2; die "unexpected operand '$1': torizoncore-builder build arguments must follow --"; }
+    shift
+fi
+tcb_args=("$@")
 
 # torizoncore-builder runs from its official container image, so users install
 # nothing beyond Docker. $TCB_IMAGE overrides the image tag.
@@ -110,15 +139,58 @@ command -v docker >/dev/null 2>&1 \
     || die "'docker' not found on PATH (needed to run torizoncore-builder)"
 [ -f "$in_tar" ] || die "input tarball not found: $in_tar"
 [ -f "$yaml" ]   || die "tcbuild config not found: $yaml"
-[ -n "$changes" ] || { [ -d ./changes ] && changes=./changes; }
-[ -n "$compose" ] || { [ -f ./docker-compose.yml ] && compose=./docker-compose.yml; }
-if [ -n "$changes" ]; then
-    [ -d "$changes" ] || die "changes directory not found: $changes"
+# The ./changes default applies only when no -c was given; otherwise it would
+# silently join the explicitly supplied set.
+if [ "${#changes_dirs[@]}" -eq 0 ] && [ -d ./changes ]; then
+    changes_dirs=(./changes)
 fi
+[ -n "$compose" ] || { [ -f ./docker-compose.yml ] && compose=./docker-compose.yml; }
+for d in ${changes_dirs[@]+"${changes_dirs[@]}"}; do
+    [ -d "$d" ] || die "changes directory not found: $d"
+done
 if [ -n "$compose" ]; then
     [ -f "$compose" ] || die "compose file not found: $compose"
 fi
-if [ "$yaml_default" -eq 1 ] && [ -z "$changes" ] && [ -z "$compose" ]; then
+
+# Each -c is staged into the tcb workdir under its basename, so the basename must
+# be a plain directory name: '-c .' would otherwise flatten the whole CWD into
+# the workdir root, over the files staged below, and a leading '-' would reach cp
+# as an option. A directory staged here but absent from the config's
+# customization.filesystem list is simply not applied — the config decides.
+staged_names=(input.wic output.wic tcbuild-genio.yaml)
+if [ -n "$compose" ]; then
+    staged_names+=("$(basename "$compose")")
+fi
+seen_basenames=()
+for d in ${changes_dirs[@]+"${changes_dirs[@]}"}; do
+    b=$(basename "$d")
+    case $b in
+        .|..) die "invalid changes directory: $d" ;;
+    esac
+    [[ $b =~ ^[A-Za-z0-9._][A-Za-z0-9._-]*$ ]] \
+        || die "invalid changes directory name '$b' (in $d): use letters, digits, '.', '_' or '-', not starting with '-'"
+    for s in ${seen_basenames[@]+"${seen_basenames[@]}"}; do
+        [ "$b" != "$s" ] || die "two changes directories share the name '$b'"
+    done
+    for s in "${staged_names[@]}"; do
+        [ "$b" != "$s" ] || die "changes directory '$b' collides with a file the bridge stages"
+    done
+    seen_basenames+=("$b")
+done
+
+# -e VAR reaches tcb as --set VAR=<value>, the only substitution channel it has.
+# Test the export attribute, not mere existence: plain existence would resolve
+# this script's own variables. Set-but-empty is still forwarded as empty, since
+# tcb's ${VAR:-d} and ${VAR-d} notations distinguish it from unset.
+env_args=()
+for v in ${env_vars[@]+"${env_vars[@]}"}; do
+    [[ $v =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "invalid variable name for -e: $v"
+    [[ $(declare -p "$v" 2>/dev/null) == "declare -x "* ]] \
+        || die "-e $v: variable is not set in the environment"
+    env_args+=(--set "$v=${!v}")
+done
+
+if [ "$yaml_default" -eq 1 ] && [ "${#changes_dirs[@]}" -eq 0 ] && [ -z "$compose" ]; then
     # The shipped config takes files from ./changes and/or a container bundle
     # from ./docker-compose.yml; with neither there is nothing to customise.
     die "no customisation supplied: create ./changes (files) or ./docker-compose.yml (containers), or pass -c / -b"
@@ -140,16 +212,22 @@ sparse=${sparse_imgs[0]}
 note "system image: ${sparse#"$work"/unpack/}"
 
 # 2. Unsparse the system image to a raw WIC inside the tcb working dir.
-# Always create changes/ (empty is a no-op overlay) so the config's
-# filesystem: - changes/ holds even for a container-only customisation.
-mkdir -p "$work/tcb/changes"
-if [ -n "$changes" ]; then
-    cp -a "$changes/." "$work/tcb/changes/"
+# Each overlay is staged under its own basename, which is how the config's
+# customization.filesystem names it. With no -c, an empty changes/ is created
+# instead (tcb errors on a filesystem: entry that does not exist), so the
+# shipped config holds for a container-only customisation.
+if [ "${#changes_dirs[@]}" -eq 0 ]; then
+    mkdir -p "$work/tcb/changes"
+else
+    for d in "${changes_dirs[@]}"; do
+        mkdir -p "$work/tcb/$(basename "$d")"
+        cp -a -- "$d/." "$work/tcb/$(basename "$d")/"
+    done
 fi
 # The bundle customisation reads its compose file from tcb's workdir; stage it
 # under the basename the tcbuild config's bundle.compose-file references.
 if [ -n "$compose" ]; then
-    cp -a "$compose" "$work/tcb/$(basename "$compose")"
+    cp -a -- "$compose" "$work/tcb/$(basename "$compose")"
 fi
 cp -a "$yaml" "$work/tcb/tcbuild-genio.yaml"
 note "unsparsing system image (simg2img)"
@@ -159,7 +237,10 @@ simg2img "$sparse" "$work/tcb/input.wic"
 #    blocks live in the YAML; tcb rewrites only the otaroot rootfs and copies
 #    the bootloader partition through untouched.
 note "running torizoncore-builder build"
-run_tcb "$work/tcb" build --file tcbuild-genio.yaml
+# -e assignments first: tcb's parse_assignments lets the last --set win, so an
+# explicit --set after -- overrides an -e of the same variable.
+run_tcb "$work/tcb" build --file tcbuild-genio.yaml \
+    ${env_args[@]+"${env_args[@]}"} ${tcb_args[@]+"${tcb_args[@]}"}
 [ -f "$work/tcb/output.wic" ] || die "torizoncore-builder produced no output.wic"
 
 # 4. Re-sparse with the build's 4096-byte block size, replacing the image in
