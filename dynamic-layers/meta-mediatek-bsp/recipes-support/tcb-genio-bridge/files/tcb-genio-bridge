@@ -91,14 +91,15 @@ run_tcb() {
     # Stock tcb's raw-image path assumes 512-byte sectors end to end; the Genio
     # UFS WIC is 4096-byte-sector. This in-container launcher patches tcb before
     # handing off: (1) open every libguestfs drive with blocksize=4096 so tcb can
-    # read the 4K GPT; (2) build the output in place — copy the base (partition
-    # layout preserved for genio-flash) and let tcb reformat the existing rootfs
-    # partition — instead of tcb's virt-resize step, an external 512-only tool
-    # that cannot read the 4K disk.
+    # read the 4K GPT; (2) size the output the way stock tcb would, copy the base
+    # (partition layout preserved for genio-flash), grow its last (rootfs)
+    # partition to that size with libguestfs, and let tcb reformat it — instead of
+    # tcb's virt-resize step, an external 512-only tool that cannot read the 4K
+    # disk, so container preloads larger than the base rootfs free space now fit.
     local launcher
     launcher="$(dirname "$workdir")/tcb-genio-launch.py"
     cat > "$launcher" <<'PY'
-import sys, shutil, runpy
+import sys, os, shutil, subprocess, runpy
 sys.path.insert(0, "/builder")
 import guestfs
 _orig_add = guestfs.GuestFS.add_drive_opts
@@ -108,9 +109,59 @@ def _add(self, filename, **kw):
 guestfs.GuestFS.add_drive_opts = _add
 import tcbuilder.backend.dt          # import dt before deploy to break tcb's kernel<->dt cycle
 import tcbuilder.backend.deploy as _deploy
-def _create_output_inplace(base_raw_img, output_raw_img, *a, **k):
+
+SECTOR_SIZE = 4096
+
+def _grow_last_partition(raw_img, added_size_kb, sector_size, rootfs_partition):
+    # Ported from torizoncore-builder PR #156. The stock container lacks its
+    # open_disk_image helper, so the handle is opened here (add_drive_opts above
+    # forces blocksize=4096). shutdown() must commit the GPT edits before tcb
+    # reopens the image to write the rootfs on a separate guestfs launch.
+    new_size = os.path.getsize(raw_img) + int(added_size_kb) * 1024
+    new_size = (new_size + sector_size - 1) // sector_size * sector_size
+    subprocess.check_output(["truncate", "-s", str(new_size), raw_img])
+    gfs = guestfs.GuestFS(python_return_dict=True)
+    gfs.add_drive_opts(raw_img, format="raw")
+    gfs.launch()
+    try:
+        dev = "/dev/sda"
+        gfs.part_expand_gpt(dev)
+        partnum = len(gfs.list_partitions())
+        if gfs.part_to_partnum(rootfs_partition) != partnum:
+            raise RuntimeError("rootfs must be the last partition to grow a 4Kn raw image")
+        start_sector = gfs.part_list(dev)[-1]["part_start"] // sector_size
+        name = gfs.part_get_name(dev, partnum)
+        gpt_type = gfs.part_get_gpt_type(dev, partnum)
+        gpt_guid = gfs.part_get_gpt_guid(dev, partnum)
+        gpt_attrs = gfs.part_get_gpt_attributes(dev, partnum)   # carries the bootable bit
+        gpt_tail = (33 * 512 + sector_size - 1) // sector_size  # GPT backup, 33 LBAs of 512 B
+        end_sector = os.path.getsize(raw_img) // sector_size - 1 - gpt_tail
+        gfs.part_del(dev, partnum)
+        gfs.part_add(dev, "primary", start_sector, end_sector)
+        gfs.part_set_name(dev, partnum, name)
+        gfs.part_set_gpt_type(dev, partnum, gpt_type)
+        gfs.part_set_gpt_guid(dev, partnum, gpt_guid)
+        gfs.part_set_gpt_attributes(dev, partnum, gpt_attrs)
+    finally:
+        gfs.shutdown()
+        gfs.close()
+
+def _create_output_grow(base_raw_img, output_raw_img, base_rootfs_partition,
+                        other_partitions_size_kb, rootfs_size_kb):
+    # Ported from PR #156 create_output_raw_image (4Kn branch): size the output
+    # exactly as stock tcb, copy the base, and grow the last partition with
+    # libguestfs instead of the 512-only virt-resize. The stock caller passes no
+    # sector_size, so SECTOR_SIZE is pinned here to always take the grow path.
+    base_img_size_kb = os.path.getsize(base_raw_img) / 1024
+    out_size_kb = max(base_img_size_kb,
+                      _deploy.IMAGE_OVERHEAD_FACTOR * (rootfs_size_kb + other_partitions_size_kb))
+    out_size_kb += _deploy.EXTRA_ROOTFS_SIZE_KB
     shutil.copy2(base_raw_img, output_raw_img)
-_deploy.create_output_raw_image = _create_output_inplace
+    if out_size_kb > base_img_size_kb:
+        added_size_kb = out_size_kb - base_img_size_kb
+        _grow_last_partition(output_raw_img, added_size_kb, SECTOR_SIZE, base_rootfs_partition)
+
+_deploy.create_output_raw_image = _create_output_grow
 sys.argv = ["torizoncore-builder"] + sys.argv[1:]
 runpy.run_path("/builder/torizoncore-builder", run_name="__main__")
 PY
