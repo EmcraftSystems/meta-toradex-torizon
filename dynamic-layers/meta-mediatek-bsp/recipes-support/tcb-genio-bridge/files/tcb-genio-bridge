@@ -199,8 +199,9 @@ measure_bundle_kb() {
     grep -qE '^[[:space:]]*bundle:[[:space:]]*$' "$yaml" || { echo 0; return; }
 
     local plat
+    # assumes the config's only platform: key is the bundle block's
     plat=$(grep -E '^[[:space:]]*platform:[[:space:]]*' "$yaml" | head -1 \
-           | sed -E 's/^[[:space:]]*platform:[[:space:]]*//; s/["'"'"']//g; s/[[:space:]]*$//')
+           | sed -E 's/^[[:space:]]*platform:[[:space:]]*//; s/["'"'"']//g; s/[[:space:]]*$//') || true
     case $plat in
         linux/*) ;;                # literal target platform from the config
         *) plat=linux/arm64 ;;     # ${VAR} ref or unset: this board is arm64
@@ -208,7 +209,7 @@ measure_bundle_kb() {
 
     local imgs
     imgs=$(grep -E '^[[:space:]]*image:[[:space:]]*' "$compose" \
-           | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/["'"'"']//g; s/[[:space:]]*$//')
+           | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/["'"'"']//g; s/[[:space:]]*$//') || true
     [ -n "$imgs" ] || { note "bundle sizing: no image in $compose; not reserving space" >&2; echo 0; return; }
 
     local total=0 img sz
