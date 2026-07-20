@@ -156,6 +156,11 @@ def _create_output_grow(base_raw_img, output_raw_img, base_rootfs_partition,
     out_size_kb = max(base_img_size_kb,
                       _deploy.IMAGE_OVERHEAD_FACTOR * (rootfs_size_kb + other_partitions_size_kb))
     out_size_kb += _deploy.EXTRA_ROOTFS_SIZE_KB
+    # A container bundle is tar_in'd into the rootfs after this sizing runs, so it
+    # never enters rootfs_size_kb; the bridge measures the bundle up front and
+    # passes a floor here so the grown partition has room for it. Without this the
+    # grow is a no-op whenever the base image is already >= 2.3x its rootfs content.
+    out_size_kb += float(os.environ.get("TCB_GENIO_BUNDLE_KB", "0"))
     shutil.copy2(base_raw_img, output_raw_img)
     if out_size_kb > base_img_size_kb:
         added_size_kb = out_size_kb - base_img_size_kb
@@ -171,6 +176,7 @@ PY
     # Docker socket lets it create that helper, and --net=host lets it talk to it.
     docker run --rm \
         -e PYTHONDONTWRITEBYTECODE=1 \
+        -e TCB_GENIO_BUNDLE_KB="${TCB_GENIO_BUNDLE_KB:-0}" \
         -v "$workdir":/workdir \
         -v "$launcher":/tcb-genio-launch.py:ro \
         -v tcb-genio-storage:/storage \
@@ -179,6 +185,44 @@ PY
         --net=host \
         --entrypoint python3 \
         "$TCB_IMAGE" /tcb-genio-launch.py "$@"
+}
+
+# Measure the container bundle's on-disk size in KiB. tcb sizes the output image
+# from the rootfs alone and tar_in's the bundle afterward, so a bundle-only
+# customisation gets no grow unless we reserve room for it here. Pull each compose
+# image at the target platform and sum docker's reported (unpacked) sizes, plus a
+# margin for docker-storage overhead and layer-dedup miscount. Best-effort: any
+# failure returns 0 and the build proceeds exactly as before, with a warning.
+measure_bundle_kb() {
+    local yaml=$1 compose=$2
+    [ -n "$compose" ] || { echo 0; return; }
+    grep -qE '^[[:space:]]*bundle:[[:space:]]*$' "$yaml" || { echo 0; return; }
+
+    local plat
+    plat=$(grep -E '^[[:space:]]*platform:[[:space:]]*' "$yaml" | head -1 \
+           | sed -E 's/^[[:space:]]*platform:[[:space:]]*//; s/["'"'"']//g; s/[[:space:]]*$//')
+    case $plat in
+        linux/*) ;;                # literal target platform from the config
+        *) plat=linux/arm64 ;;     # ${VAR} ref or unset: this board is arm64
+    esac
+
+    local imgs
+    imgs=$(grep -E '^[[:space:]]*image:[[:space:]]*' "$compose" \
+           | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/["'"'"']//g; s/[[:space:]]*$//')
+    [ -n "$imgs" ] || { note "bundle sizing: no image in $compose; not reserving space" >&2; echo 0; return; }
+
+    local total=0 img sz
+    while IFS= read -r img; do
+        [ -n "$img" ] || continue
+        if ! docker pull --platform "$plat" "$img" >/dev/null 2>&1; then
+            note "bundle sizing: cannot pull $img ($plat); output image may be too small for the bundle" >&2
+            echo 0; return
+        fi
+        sz=$(docker image inspect -f '{{.Size}}' "$img" 2>/dev/null) || sz=0
+        total=$(( total + sz ))
+    done <<< "$imgs"
+
+    echo $(( total / 1024 * 11 / 10 + 65536 ))   # KiB, +10% overhead, +64 MiB slack
 }
 
 # Preflight every external tool so the run fails clean, not half-done.
@@ -287,6 +331,13 @@ simg2img "$sparse" "$work/tcb/input.wic"
 # 3. Run torizoncore-builder against the raw image. The raw-image input/output
 #    blocks live in the YAML; tcb rewrites only the otaroot rootfs and copies
 #    the bootloader partition through untouched.
+# Reserve output-image growth for the container bundle (see measure_bundle_kb):
+# the launcher adds this to tcb's rootfs-based sizing so the preload fits.
+export TCB_GENIO_BUNDLE_KB
+TCB_GENIO_BUNDLE_KB=$(measure_bundle_kb "$yaml" "$compose")
+if [ "${TCB_GENIO_BUNDLE_KB:-0}" -gt 0 ] 2>/dev/null; then
+    note "reserving $(( TCB_GENIO_BUNDLE_KB / 1024 )) MiB of image growth for the container bundle"
+fi
 note "running torizoncore-builder build"
 # -e assignments first: tcb's parse_assignments lets the last --set win, so an
 # explicit --set after -- overrides an -e of the same variable.
