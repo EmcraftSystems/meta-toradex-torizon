@@ -1,0 +1,50 @@
+/* Kemaro carrier: SMARC GPIO0..GPIO6 hogged as SoC outputs, held low at probe.
+ * pio60=CAM0_PWR#(GPIO0) pio59=CAM1_PWR#(GPIO1) pio57=CAM0_RST#(GPIO2) pio58=CAM1_RST#(GPIO3)
+ * pio118=HDA_RST#(GPIO4) pio72=PWM_OUT(GPIO5) pio119=TACHIN(GPIO6).
+ * TACHIN is a carrier fan-tach input on the reference carrier; driving it low is
+ * a config-only test artefact (confirm no fan drives the net before contention).
+ * Appended to the vendor board DTS post-copy; carrier-only, not upstreamed. */
+&pio {
+	kemaro_gpio0 {
+		gpio-hog;
+		gpios = <60 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "kemaro-gpio0";
+	};
+	kemaro_gpio1 {
+		gpio-hog;
+		gpios = <59 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "kemaro-gpio1";
+	};
+	kemaro_gpio2 {
+		gpio-hog;
+		gpios = <57 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "kemaro-gpio2";
+	};
+	kemaro_gpio3 {
+		gpio-hog;
+		gpios = <58 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "kemaro-gpio3";
+	};
+	kemaro_gpio4 {
+		gpio-hog;
+		gpios = <118 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "kemaro-gpio4";
+	};
+	kemaro_gpio5 {
+		gpio-hog;
+		gpios = <72 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "kemaro-gpio5";
+	};
+	kemaro_gpio6 {
+		gpio-hog;
+		gpios = <119 GPIO_ACTIVE_HIGH>;
+		output-low;
+		line-name = "kemaro-gpio6";
+	};
+};

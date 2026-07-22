@@ -9,6 +9,19 @@
 # concern - so drop the buildpaths check for this recipe to keep the log usable.
 WARN_QA:remove = "buildpaths"
 
+FILESEXTRAPATHS:prepend := "${THISDIR}/${BPN}:"
+
+# Kemaro-carrier SMARC GPIO0..3 gpio-hog. The vendor do_copy_source drops the
+# ADLINK board DTS into the kernel tree *after* do_patch, so a plain SRC_URI
+# patch has nothing to apply against; amend the copied DTS in a post-copy step.
+SRC_URI:append:lec-mtk1200 = " file://kemaro-smarc-gpio-hog.dtsi"
+
+do_copy_source:append:lec-mtk1200() {
+    dts=${S}/arch/arm64/boot/dts/mediatek/lec-mtk-i1200.dts
+    [ -f "$dts" ] || bbfatal "kemaro gpio-hog: $dts absent after do_copy_source"
+    cat ${WORKDIR}/kemaro-smarc-gpio-hog.dtsi >> "$dts"
+}
+
 # Drop CONFIG_LOCALVERSION_AUTO so the kernel release / module path / vermagic
 # don't carry setlocalversion's redundant "-g<sha>-dirty" (the shared kernel tree
 # is dirtied by the vendor do_copy_source modifying tracked mt8195.dtsi).
