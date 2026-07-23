@@ -12,7 +12,7 @@ hostname:pn-base-files = "torizon-lec-mtk-i1200-ufs"
 # Overrides (not appends to) torizon.bbclass's shared OSTREE_KERNEL_ARGS
 # default: routes console output to fbcon and disables the Plymouth splash so
 # it doesn't obscure the login prompt.
-OSTREE_KERNEL_ARGS:sota:lec-mtk1200 = "logo.nologo vt.global_cursor_default=0 plymouth.enable=0 fbcon=map:0 console=ttyS0,921600 console=tty1 earlycon root=LABEL=otaroot rootfstype=ext4 rootwait"
+OSTREE_KERNEL_ARGS:sota:lec-mtk1200 = "logo.nologo vt.global_cursor_default=0 plymouth.enable=0 nosplash fbcon=map:0 console=ttyS0,921600 console=tty1 earlycon root=LABEL=otaroot rootfstype=ext4 rootwait"
 
 # The board carries a TPM2.0.
 DISTRO_FEATURES:append = " tpm2"
