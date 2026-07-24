@@ -190,9 +190,12 @@ PY
 # Measure the container bundle's on-disk size in KiB. tcb sizes the output image
 # from the rootfs alone and tar_in's the bundle afterward, so a bundle-only
 # customisation gets no grow unless we reserve room for it here. Pull each compose
-# image at the target platform and sum docker's reported (unpacked) sizes, plus a
-# margin for docker-storage overhead and layer-dedup miscount. Best-effort: any
-# failure returns 0 and the build proceeds exactly as before, with a warning.
+# image at the target platform and sum its unpacked bytes, plus a margin for
+# docker-storage overhead and layer-dedup miscount. The measure is the uncompressed
+# `docker save` stream, not `docker image inspect -f '{{.Size}}'`, whose .Size is
+# store-dependent — the containerd image store reports compressed content size, which
+# under-reserves the grow and overflows the rootfs. Best-effort: any failure returns 0
+# and the build proceeds exactly as before, with a warning.
 measure_bundle_kb() {
     local yaml=$1 compose=$2
     [ -n "$compose" ] || { echo 0; return; }
@@ -219,7 +222,8 @@ measure_bundle_kb() {
             note "bundle sizing: cannot pull $img ($plat); output image may be too small for the bundle" >&2
             echo 0; return
         fi
-        sz=$(docker image inspect -f '{{.Size}}' "$img" 2>/dev/null) || sz=0
+        sz=$(docker save "$img" 2>/dev/null | wc -c) || sz=0
+        sz=${sz//[[:space:]]/}; case $sz in ''|*[!0-9]*) sz=0 ;; esac
         total=$(( total + sz ))
     done <<< "$imgs"
 
