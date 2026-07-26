@@ -187,15 +187,82 @@ PY
         "$TCB_IMAGE" /tcb-genio-launch.py "$@"
 }
 
+# Sum an image's *uncompressed* layer sizes, independent of the host's Docker
+# image store. `docker save` streams uncompressed layer tars on the classic
+# graphdriver store but gzip-compressed OCI blobs on the containerd image store,
+# so a plain `wc -c` of the stream is compressed on containerd and under-reserves
+# the grow. Decompress the gzip layers before counting so both stores yield the
+# unpacked footprint the board stores. Best-effort ladder: on any failure — no
+# python3, a malformed stream — fall back to the raw stream count (correct on the
+# graphdriver store), then to 0; never aborts under `set -euo pipefail`.
+measure_unpacked_bytes() {
+    local img=$1 sz=0 py
+    if command -v python3 >/dev/null 2>&1 && py=$(mktemp "${TMPDIR:-/tmp}/tcb-measure.XXXXXX"); then
+        cat >"$py" <<'PY'
+import sys, tarfile, gzip, io
+
+CHUNK = 1 << 20
+
+class _Prepend(io.RawIOBase):
+    # Re-emit the peeked magic bytes, then delegate to the member stream.
+    def __init__(self, head, rest):
+        self._head, self._rest = head, rest
+    def readable(self):
+        return True
+    def readinto(self, buf):
+        if self._head:
+            n = min(len(buf), len(self._head))
+            buf[:n], self._head = self._head[:n], self._head[n:]
+            return n
+        return self._rest.readinto(buf)
+
+def drain(f):
+    n = 0
+    while True:
+        b = f.read(CHUNK)
+        if not b:
+            return n
+        n += len(b)
+
+total = 0
+try:
+    with tarfile.open(fileobj=sys.stdin.buffer, mode="r|") as tf:
+        for m in tf:
+            if not m.isfile():
+                continue
+            f = tf.extractfile(m)
+            if f is None:
+                continue
+            head = f.read(2)
+            if head == b"\x1f\x8b":          # gzip: compressed OCI layer blob
+                total += drain(gzip.GzipFile(fileobj=io.BufferedReader(_Prepend(head, f))))
+            else:                             # raw layer tar, or tiny metadata blob
+                total += len(head) + drain(f)
+except Exception:
+    print(0)
+    sys.exit(0)
+print(total)
+PY
+        sz=$(docker save "$img" 2>/dev/null | python3 "$py") || sz=0
+        rm -f "$py"
+        sz=${sz//[[:space:]]/}; case $sz in ''|*[!0-9]*) sz=0 ;; esac
+    fi
+    if [ "${sz:-0}" -gt 0 ] 2>/dev/null; then
+        echo "$sz"; return
+    fi
+    note "bundle sizing: store-independent measure unavailable for $img; using raw docker-save size (may under-reserve on a containerd image store)" >&2
+    sz=$(docker save "$img" 2>/dev/null | wc -c) || sz=0
+    sz=${sz//[[:space:]]/}; case $sz in ''|*[!0-9]*) sz=0 ;; esac
+    echo "$sz"
+}
+
 # Measure the container bundle's on-disk size in KiB. tcb sizes the output image
 # from the rootfs alone and tar_in's the bundle afterward, so a bundle-only
 # customisation gets no grow unless we reserve room for it here. Pull each compose
-# image at the target platform and sum its unpacked bytes, plus a margin for
-# docker-storage overhead and layer-dedup miscount. The measure is the uncompressed
-# `docker save` stream, not `docker image inspect -f '{{.Size}}'`, whose .Size is
-# store-dependent — the containerd image store reports compressed content size, which
-# under-reserves the grow and overflows the rootfs. Best-effort: any failure returns 0
-# and the build proceeds exactly as before, with a warning.
+# image at the target platform and sum its unpacked bytes (measure_unpacked_bytes,
+# store-independent), plus a margin for docker-storage overhead and layer-dedup
+# miscount. Best-effort: any failure returns 0 and the build proceeds exactly as
+# before, with a warning.
 measure_bundle_kb() {
     local yaml=$1 compose=$2
     [ -n "$compose" ] || { echo 0; return; }
@@ -222,8 +289,7 @@ measure_bundle_kb() {
             note "bundle sizing: cannot pull $img ($plat); output image may be too small for the bundle" >&2
             echo 0; return
         fi
-        sz=$(docker save "$img" 2>/dev/null | wc -c) || sz=0
-        sz=${sz//[[:space:]]/}; case $sz in ''|*[!0-9]*) sz=0 ;; esac
+        sz=$(measure_unpacked_bytes "$img")
         total=$(( total + sz ))
     done <<< "$imgs"
 
