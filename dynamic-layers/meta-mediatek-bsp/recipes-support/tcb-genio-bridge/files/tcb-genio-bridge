@@ -10,6 +10,9 @@ set -euo pipefail
 
 prog=${0##*/}
 here=$(cd -- "$(dirname -- "$0")" && pwd)
+# Quoted for the diagnostics to print back, so a failing run tells the user
+# exactly what to re-run rather than "the same arguments as before".
+invocation=$(printf '%q ' "$0" "$@")
 
 die()  { echo "$prog: error: $*" >&2; exit 1; }
 note() { echo "$prog: $*"; }
@@ -83,6 +86,179 @@ tcb_args=("$@")
 # torizoncore-builder runs from its official container image, so users install
 # nothing beyond Docker. $TCB_IMAGE overrides the image tag.
 TCB_IMAGE=${TCB_IMAGE:-torizon/torizoncore-builder:3}
+LAUNCHER_NAME=.tcb-genio-launch.py
+
+# Everything the tool does with the user's files happens through one bind mount,
+# so the daemon must be able to resolve the working directory. A daemon that
+# cannot — snap-packaged Docker (private /tmp, reaches only non-hidden files
+# under $HOME), a remote DOCKER_HOST, this script run inside a container — is
+# given an empty directory by Docker instead of an error, and every later step
+# fails for reasons that have nothing to do with the real cause. These five
+# messages are the whole user-facing contract of that failure.
+msg_A() {
+    cat >&2 <<EOF
+$prog: error: the Docker daemon cannot see this machine's files.
+
+  working directory: $work
+  what happened:     the file this script just wrote was not there when the
+                     container looked for it
+
+The Docker daemon does not share the filesystem you are running from. This is
+normal for Docker installed as a snap, which has its own private /tmp and can
+only reach non-hidden files under your home directory.
+
+EOF
+    case ${DOCKER_HOST-} in
+        ''|unix://*) cat >&2 <<EOF
+Move the whole working directory somewhere under your home and run it again
+from there - the script, its tcbuild-genio.yaml, your changes/ directory, any
+docker-compose.yml and the .aiotflash.tar all need to travel together:
+
+  mkdir -p ~/tcb-work
+  cp -a "$PWD/." ~/tcb-work/
+  cd ~/tcb-work
+  $invocation
+
+(that last line is the command you just ran)
+
+If you used sudo, run it without: under sudo your home is /root, which a
+snap-installed Docker cannot reach either. And if "docker context ls" shows
+something other than 'default' in use, your daemon may not be on this machine
+at all.
+EOF
+            ;;
+        *) cat >&2 <<EOF
+DOCKER_HOST is set to $DOCKER_HOST, so the Docker daemon is on another machine
+and cannot read any directory on this one. No directory here will work. Point
+Docker at a local daemon and run it again:
+
+  unset DOCKER_HOST
+  $invocation
+EOF
+            ;;
+    esac
+    printf '\n%s\n' "To skip this check and run anyway, set TCB_GENIO_SKIP_PREFLIGHT=1." >&2
+}
+
+msg_B() {
+    cat >&2 <<EOF
+$prog: error: the Docker daemon reached the working directory but could not
+use it.
+
+  working directory: $work
+  what happened:     $1
+
+If this directory is on a network share (NFS, CIFS) or a read-only mount, use
+a local one instead:
+
+  mkdir -p ~/tcb-work && cp -a "$PWD/." ~/tcb-work/ && cd ~/tcb-work
+
+Otherwise the daemon itself is restricting access - dockerd running with
+--userns-remap, or SELinux in enforcing mode. Those are host configuration and
+moving the directory will not help.
+
+To skip this check and run anyway, set TCB_GENIO_SKIP_PREFLIGHT=1.
+EOF
+}
+
+msg_C() {
+    cat >&2 <<EOF
+$prog: error: the Docker socket did not reach the container.
+
+  socket: $sock
+
+Preloading containers needs the bridge to hand the daemon's own socket to
+torizoncore-builder. If you are running rootless Docker, its socket is
+elsewhere - tell the bridge where:
+
+  DOCKER_HOST=unix:///run/user/\$(id -u)/docker.sock $invocation
+
+If your daemon listens only on a TCP port and has no unix socket at all,
+container preloading cannot work through this bridge; build without the
+bundle: block in the tcbuild configuration.
+EOF
+}
+
+msg_D() {
+    cat >&2 <<EOF
+$prog: error: could not run a container. Docker reported:
+
+  ${1:-(no output)}
+
+If that mentions "permission denied" and "docker.sock", your user is not in the
+docker group:
+
+  sudo usermod -aG docker \$USER
+
+then start a new login session (log out and back in, not just a new terminal)
+and run it again.
+EOF
+}
+
+msg_E() {
+    cat >&2 <<EOF
+$prog: warning: only $(kb_gb "$1") free where the working files go; this
+customisation needs roughly $(kb_gb "$2"). The run will continue and may fail
+part way.
+
+  working directory: $work
+
+To use a different disk, set TMPDIR to a directory on it - it must be one the
+Docker daemon can also reach, so with snap-installed Docker keep it under your
+home:
+
+  TMPDIR=~/big-disk/scratch $invocation
+EOF
+}
+
+kb_gb() { awk -v k="$1" 'BEGIN { printf "%.1f GB", k / 1000000 }'; }
+
+# One throwaway container, before the minutes of unpacking that a bad mount
+# would waste. The probe is a shell script so there is no format to agree on
+# between it and the caller; it always exits 0 and reports three facts, so a
+# non-zero docker run means the container never ran, not that a check failed.
+probe_workdir() {
+    local out err nonce
+    mkdir -p "$work/tcb"
+    nonce=$$-${RANDOM}-$(date +%s)
+    printf %s "$nonce" > "$work/tcb/.tcb-probe-host"
+    err=$(mktemp "$work/probe-err.XXXXXX")
+
+    out=$(docker run --rm ${dind_args[@]+"${dind_args[@]}"} \
+              -v "$work/tcb":/workdir --entrypoint sh "$TCB_IMAGE" -c '
+                  echo READY
+                  if   [ ! -e /workdir/.tcb-probe-host ]; then echo "READ=absent"
+                  elif [ ! -r /workdir/.tcb-probe-host ]; then echo "READ=denied"
+                  else echo "READ=$(cat /workdir/.tcb-probe-host)"; fi
+                  if echo back > /workdir/.tcb-probe-ctr 2>/dev/null
+                  then echo "WRITE=ok"; else echo "WRITE=denied"; fi
+                  if [ -S /var/run/docker.sock ]
+                  then echo "SOCK=ok"; else echo "SOCK=bad"; fi
+              ' 2>"$err") || true
+
+    case $out in
+        READY*) ;;
+        *) msg_D "$(cat "$err")"; return 1 ;;
+    esac
+    case $out in
+        *"READ=$nonce"*) ;;
+        *READ=absent*) msg_A; return 1 ;;
+        *) msg_B "could not read the file this machine wrote"; return 1 ;;
+    esac
+    case $out in
+        *WRITE=ok*) ;;
+        *) msg_B "could not write into the working directory"; return 1 ;;
+    esac
+    [ "$(cat "$work/tcb/.tcb-probe-ctr" 2>/dev/null)" = back ] \
+        || { msg_B "what the container wrote did not reach this machine"; return 1; }
+    if [ "$bundle_configured" = 1 ]; then
+        case $out in
+            *SOCK=ok*) ;;
+            *) msg_C; return 1 ;;
+        esac
+    fi
+    rm -f "$work/tcb/.tcb-probe-host" "$work/tcb/.tcb-probe-ctr" "$err"
+}
 
 # Run tcb in the given host workdir (mounted as tcb's /workdir) from a launcher
 # that patches it for the Genio's 4096-byte-sector WIC (see below).
@@ -96,10 +272,18 @@ run_tcb() {
     # partition to that size with libguestfs, and let tcb reformat it — instead of
     # tcb's virt-resize step, an external 512-only tool that cannot read the 4K
     # disk, so container preloads larger than the base rootfs free space now fit.
+    # The launcher goes inside the workdir that is already mounted, rather than
+    # riding a bind mount of its own: a daemon that cannot resolve a -v source
+    # silently substitutes an empty directory, which reaches python3 as a
+    # directory and fails with a message about '__main__' instead of about the
+    # mount. From /workdir the same condition yields "can't open file … [Errno 2]".
     local launcher
-    launcher="$(dirname "$workdir")/tcb-genio-launch.py"
+    launcher="$workdir/$LAUNCHER_NAME"
     cat > "$launcher" <<'PY'
 import sys, os, shutil, subprocess, runpy
+# /workdir is the launcher's own directory and holds the user's overlay trees,
+# so drop it before importing anything the tool provides.
+sys.path[:] = [p for p in sys.path if p not in ("", "/workdir")]
 sys.path.insert(0, "/builder")
 import guestfs
 _orig_add = guestfs.GuestFS.add_drive_opts
@@ -171,20 +355,20 @@ sys.argv = ["torizoncore-builder"] + sys.argv[1:]
 runpy.run_path("/builder/torizoncore-builder", run_name="__main__")
 PY
     # tcb unpacks a scratch OS sysroot to a hard-coded /deploy (absent from the
-    # image) — give it a throwaway volume there. For the container-preload
-    # (bundle) case tcb spawns a docker-in-docker to fetch the image: the host
-    # Docker socket lets it create that helper, and --net=host lets it talk to it.
+    # image) — give it a throwaway volume there. $dind_args carries the host
+    # Docker socket and --net=host, which only the container-preload path needs
+    # (tcb spawns a docker-in-docker to fetch the images); hosts whose socket
+    # lives elsewhere, such as rootless Docker, would otherwise be handed a
+    # fabricated empty directory in its place on every run.
     docker run --rm \
         -e PYTHONDONTWRITEBYTECODE=1 \
         -e TCB_GENIO_BUNDLE_KB="${TCB_GENIO_BUNDLE_KB:-0}" \
         -v "$workdir":/workdir \
-        -v "$launcher":/tcb-genio-launch.py:ro \
         -v tcb-genio-storage:/storage \
         -v /deploy \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        --net=host \
+        ${dind_args[@]+"${dind_args[@]}"} \
         --entrypoint python3 \
-        "$TCB_IMAGE" /tcb-genio-launch.py "$@"
+        "$TCB_IMAGE" "/workdir/$LAUNCHER_NAME" "$@"
 }
 
 # Sum an image's *uncompressed* layer sizes, independent of the host's Docker
@@ -323,7 +507,7 @@ fi
 # the workdir root, over the files staged below, and a leading '-' would reach cp
 # as an option. A directory staged here but absent from the config's
 # customization.filesystem list is simply not applied — the config decides.
-staged_names=(input.wic output.wic tcbuild-genio.yaml)
+staged_names=(input.wic output.wic tcbuild-genio.yaml "$LAUNCHER_NAME")
 if [ -n "$compose" ]; then
     staged_names+=("$(basename "$compose")")
 fi
@@ -363,8 +547,48 @@ if [ "$yaml_default" -eq 1 ] && [ "${#changes_dirs[@]}" -eq 0 ] && [ -z "$compos
 fi
 [ -n "$out" ] || out="${in_tar%.tar}-custom.tar"
 
-work=$(mktemp -d "${TMPDIR:-/tmp}/tcb-genio.XXXXXX")
-trap 'rm -rf "$work"' EXIT
+# The working files go where the user is working, matching the mount Toradex's
+# own torizoncore-builder wrapper uses; /tmp is a fallback, not the default,
+# because a snap-confined daemon cannot see it. An explicit TMPDIR still wins.
+# A candidate that is relative or holds a colon is skipped rather than refused:
+# both break the -v argument, one silently (a relative source is read as a
+# volume name).
+for parent in ${TMPDIR:+"$TMPDIR"} "$PWD" /tmp; do
+    parent=${parent%/}; [ -n "$parent" ] || parent=/
+    case $parent in /*) ;; *) continue ;; esac
+    case $parent in *:*) continue ;; esac
+    work=$(mktemp -d "$parent/tcb-genio.XXXXXX" 2>/dev/null) && break
+done
+[ -n "${work:-}" ] || die "could not create a working directory in $PWD or /tmp"
+# A cleanup failure must not fail a run that produced its tarball: tcb writes
+# root-owned directories in here.
+trap 'rm -rf "$work" 2>/dev/null || note "left behind: $work"' EXIT
+[ "$work" = "$PWD/${work##*/}" ] || note "working files: $work"
+
+# The socket and --net=host are wanted only when a preload is actually
+# configured. Keyed on the config alone, not on a resolvable compose file: a
+# custom config can name one the -c staging provides, in which case $compose is
+# empty and the bundle still runs.
+bundle_configured=0
+grep -qE '^[[:space:]]*bundle:[[:space:]]*(#.*)?$' "$yaml" && bundle_configured=1
+dind_args=()
+sock=/var/run/docker.sock
+case ${DOCKER_HOST-} in
+    unix://?*) sock=${DOCKER_HOST#unix://} ;;
+esac
+if [ "$bundle_configured" = 1 ]; then
+    dind_args=(-v "$sock":/var/run/docker.sock --net=host)
+fi
+
+if [ -z "${TCB_GENIO_SKIP_PREFLIGHT:-}" ]; then
+    probe_workdir || exit 1
+    # Peak usage is the unpacked tarball plus the unsparsed input and output
+    # images; measured at ~10x the tarball. A warning, not a refusal — the
+    # figure is an estimate and a wrong one must not block a working run.
+    avail_kb=$(df -Pk "$work" | awk 'NR==2 {print $4}')
+    need_kb=$(( $(wc -c < "$in_tar") / 1024 * 10 ))
+    [ "${avail_kb:-0}" -ge "$need_kb" ] 2>/dev/null || msg_E "${avail_kb:-0}" "$need_kb"
+fi
 
 # 1. Unpack the genio-flash tarball (preserve xattrs as the build packed them).
 note "unpacking $in_tar"
