@@ -372,11 +372,15 @@ PY
 }
 
 # Measure an image's unpacked footprint, independent of the host's Docker image
-# store. Ladder, best-effort throughout so it never aborts under
-# `set -euo pipefail`: export the flattened container filesystem (works on both
-# stores); else sum the `docker save` layers, decompressing the gzip blobs the
-# containerd store emits where the graphdriver store emits plain tars; else the
-# raw stream count (correct only on the graphdriver store); else 0.
+# store. Two rungs, in order: export the flattened container filesystem (works
+# on both stores), else sum the `docker save` layers, decompressing the gzip
+# blobs the containerd store emits where the graphdriver store emits plain tars.
+# Both yield an unpacked figure; there is deliberately no rung that returns a
+# compressed one, because a compressed figure under-reserves the grow and is
+# indistinguishable, to the caller, from a real measurement. If neither rung
+# works the function returns 0, meaning "unmeasurable", and the caller reserves
+# nothing rather than sizing from a fraction. Every step is guarded so the
+# function never aborts under `set -euo pipefail`.
 measure_unpacked_bytes() {
     local img=$1 plat=${2:-} sz=0 py cname
 
@@ -390,12 +394,19 @@ measure_unpacked_bytes() {
     local -a pargs=()
     if [ -n "$plat" ]; then pargs=(--platform "$plat"); fi
     cname=tcb-genio-measure-$$-$RANDOM
-    if docker create ${pargs[@]+"${pargs[@]}"} --name "$cname" "$img" >/dev/null 2>&1; then
+    # The trailing /bin/true is never executed — the container is only created —
+    # but docker refuses to create one from an image that declares no CMD and no
+    # ENTRYPOINT, which a data-only payload image legitimately does not.
+    # measure_cname is global so the EXIT trap can reap the container if the
+    # export, the longest step here, is interrupted.
+    measure_cname=$cname
+    if docker create ${pargs[@]+"${pargs[@]}"} --name "$cname" "$img" /bin/true >/dev/null 2>&1; then
         # An export that dies part way still exits wc successfully, and a short
         # count here would under-reserve exactly as the bug being fixed did, so
         # take the figure only when docker itself succeeded.
         sz=$(docker export "$cname" 2>/dev/null | wc -c; exit "${PIPESTATUS[0]}") || sz=0
         docker rm -f "$cname" >/dev/null 2>&1 || true
+        measure_cname=
         sz=${sz//[[:space:]]/}; case $sz in ''|*[!0-9]*) sz=0 ;; esac
         if [ "${sz:-0}" -gt 0 ] 2>/dev/null; then
             echo "$sz"; return
@@ -456,10 +467,8 @@ PY
     if [ "${sz:-0}" -gt 0 ] 2>/dev/null; then
         echo "$sz"; return
     fi
-    note "bundle sizing: store-independent measure unavailable for $img; using raw docker-save size (may under-reserve on a containerd image store)" >&2
-    sz=$(docker save "$img" 2>/dev/null | wc -c) || sz=0
-    sz=${sz//[[:space:]]/}; case $sz in ''|*[!0-9]*) sz=0 ;; esac
-    echo "$sz"
+    note "bundle sizing: cannot measure the unpacked size of $img on this host" >&2
+    echo 0
 }
 
 # Measure the container bundle's on-disk size in KiB. tcb sizes the output image
@@ -591,7 +600,16 @@ done
 [ -n "${work:-}" ] || die "could not create a working directory in $PWD or /tmp"
 # A cleanup failure must not fail a run that produced its tarball: tcb writes
 # root-owned directories in here.
-trap 'rm -rf "$work" 2>/dev/null || note "left behind: $work"' EXIT
+# INT/TERM as well as EXIT: an interrupt during the bundle measurement would
+# otherwise leave the measurement container holding a writable layer that pins
+# its image against docker rmi.
+measure_cname=
+cleanup() {
+    [ -n "${measure_cname:-}" ] && docker rm -f "$measure_cname" >/dev/null 2>&1
+    rm -rf "$work" 2>/dev/null || note "left behind: $work"
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM
 [ "$work" = "$PWD/${work##*/}" ] || note "working files: $work"
 
 # The socket and --net=host are wanted only when a preload is actually
@@ -611,11 +629,26 @@ fi
 
 if [ -z "${TCB_GENIO_SKIP_PREFLIGHT:-}" ]; then
     probe_workdir || exit 1
+fi
+
+# Size the bundle before the space check, not after: the output image, the
+# re-sparsed image and the output tarball all grow with the bundle, so a check
+# that knows only the input tarball is blind to the term that dominates at
+# scale. (see measure_bundle_kb) The launcher adds this to tcb's rootfs-based
+# sizing so the preload fits.
+export TCB_GENIO_BUNDLE_KB
+TCB_GENIO_BUNDLE_KB=$(measure_bundle_kb "$yaml" "$compose")
+if [ "${TCB_GENIO_BUNDLE_KB:-0}" -gt 0 ] 2>/dev/null; then
+    note "reserving $(( TCB_GENIO_BUNDLE_KB / 1024 )) MiB of image growth for the container bundle"
+fi
+
+if [ -z "${TCB_GENIO_SKIP_PREFLIGHT:-}" ]; then
     # Peak usage is the unpacked tarball plus the unsparsed input and output
-    # images; measured at ~10x the tarball. A warning, not a refusal — the
-    # figure is an estimate and a wrong one must not block a working run.
+    # images, plus the bundle carried in three of them: measured at ~10x the
+    # tarball plus ~2x the bundle. A warning, not a refusal — the figure is an
+    # estimate and a wrong one must not block a working run.
     avail_kb=$(df -Pk "$work" | awk 'NR==2 {print $4}')
-    need_kb=$(( $(wc -c < "$in_tar") / 1024 * 10 ))
+    need_kb=$(( $(wc -c < "$in_tar") / 1024 * 10 + TCB_GENIO_BUNDLE_KB * 2 ))
     [ "${avail_kb:-0}" -ge "$need_kb" ] 2>/dev/null || msg_E "${avail_kb:-0}" "$need_kb"
 fi
 
@@ -655,13 +688,7 @@ simg2img "$sparse" "$work/tcb/input.wic"
 # 3. Run torizoncore-builder against the raw image. The raw-image input/output
 #    blocks live in the YAML; tcb rewrites only the otaroot rootfs and copies
 #    the bootloader partition through untouched.
-# Reserve output-image growth for the container bundle (see measure_bundle_kb):
-# the launcher adds this to tcb's rootfs-based sizing so the preload fits.
-export TCB_GENIO_BUNDLE_KB
-TCB_GENIO_BUNDLE_KB=$(measure_bundle_kb "$yaml" "$compose")
-if [ "${TCB_GENIO_BUNDLE_KB:-0}" -gt 0 ] 2>/dev/null; then
-    note "reserving $(( TCB_GENIO_BUNDLE_KB / 1024 )) MiB of image growth for the container bundle"
-fi
+# TCB_GENIO_BUNDLE_KB was measured and exported before the space check above.
 note "running torizoncore-builder build"
 # -e assignments first: tcb's parse_assignments lets the last --set win, so an
 # explicit --set after -- overrides an -e of the same variable.
