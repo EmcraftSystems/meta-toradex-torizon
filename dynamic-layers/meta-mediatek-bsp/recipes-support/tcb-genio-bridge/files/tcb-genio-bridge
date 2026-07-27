@@ -353,6 +353,44 @@ def _create_output_grow(base_raw_img, output_raw_img, base_rootfs_partition,
         _grow_last_partition(output_raw_img, added_size_kb, SECTOR_SIZE, base_rootfs_partition)
 
 _deploy.create_output_raw_image = _create_output_grow
+
+_orig_deploy_local = _deploy.deploy_ostree_local
+
+def _deploy_local_carrying_var(src_sysroot_dir, src_ostree_archive_dir,
+                               dst_sysroot_dir, ref):
+    # tcb restores only var/rootdirs from the base deployment, so a customised
+    # image loses /var/sota - the update client's state directory, and where the
+    # documented cloud-provisioning procedure writes its configuration. Carry
+    # every top-level entry the new deployment does not already have: naming the
+    # ones we know about is what produced this bug in the first place.
+    csum = _orig_deploy_local(src_sysroot_dir, src_ostree_archive_dir,
+                              dst_sysroot_dir, ref)
+    var = os.path.join("ostree/deploy", _deploy.OSNAME, "var")
+    src, dst = os.path.join(src_sysroot_dir, var), os.path.join(dst_sysroot_dir, var)
+    for name in sorted(os.listdir(src)):
+        # .ostree-selabeled marks the new deployment as already SELinux-labelled;
+        # it belongs to that deployment, not to the one being copied from.
+        if name == ".ostree-selabeled" or os.path.exists(os.path.join(dst, name)):
+            continue
+        subprocess.check_call(["cp", "-a", "-t", dst, os.path.join(src, name)])
+    # The base image's installed_versions names the base commit, but the
+    # customised image deploys the union commit, so the carried file would tell
+    # the device it is running something it is not. There is no truthful
+    # replacement for a commit the server has never seen: leave none, and let
+    # aktualizr read the booted deployment instead.
+    stale = os.path.join(dst, "sota", "import", "installed_versions")
+    if os.path.exists(stale):
+        os.remove(stale)
+    # Post-condition, not a pre-flight attribute check: the image tag floats, so
+    # a silent no-op is as likely as a rename and this catches both.
+    if not os.path.isdir(os.path.join(dst, "sota")):
+        raise RuntimeError(
+            "tcb-genio-bridge: the base deployment's var/sota was not carried "
+            "into the customised image; torizoncore-builder's deploy path has "
+            "changed under this patch")
+    return csum
+
+_deploy.deploy_ostree_local = _deploy_local_carrying_var
 sys.argv = ["torizoncore-builder"] + sys.argv[1:]
 runpy.run_path("/builder/torizoncore-builder", run_name="__main__")
 PY
