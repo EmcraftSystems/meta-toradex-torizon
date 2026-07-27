@@ -17,10 +17,6 @@ OSTREE_KERNEL_ARGS:sota:lec-mtk1200 = "logo.nologo vt.global_cursor_default=0 pl
 # The board carries a TPM2.0.
 DISTRO_FEATURES:append = " tpm2"
 
-# RTL8821AU USB Wi-Fi adapter (recipes-kernel/rtw88 — the upstream
-# tree is a collection of modules for several Realtek chips; only the
-# RTL8821AU chain is built/used here). Named by PN, not a
-# kernel-module-rtw-* package directly — only the kernel recipe
-# declares PACKAGES_DYNAMIC for that pattern, so this recipe's own
-# RDEPENDS pulls the actual module packages in instead.
+# RTL8821AU USB Wi-Fi driver (recipes-kernel/rtw88); named by PN since
+# only the kernel recipe declares PACKAGES_DYNAMIC for kernel-module-*.
 IMAGE_INSTALL:append = " rtw88"
