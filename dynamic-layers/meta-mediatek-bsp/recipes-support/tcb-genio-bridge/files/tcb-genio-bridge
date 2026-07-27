@@ -371,16 +371,38 @@ PY
         "$TCB_IMAGE" "/workdir/$LAUNCHER_NAME" "$@"
 }
 
-# Sum an image's *uncompressed* layer sizes, independent of the host's Docker
-# image store. `docker save` streams uncompressed layer tars on the classic
-# graphdriver store but gzip-compressed OCI blobs on the containerd image store,
-# so a plain `wc -c` of the stream is compressed on containerd and under-reserves
-# the grow. Decompress the gzip layers before counting so both stores yield the
-# unpacked footprint the board stores. Best-effort ladder: on any failure — no
-# python3, a malformed stream — fall back to the raw stream count (correct on the
-# graphdriver store), then to 0; never aborts under `set -euo pipefail`.
+# Measure an image's unpacked footprint, independent of the host's Docker image
+# store. Ladder, best-effort throughout so it never aborts under
+# `set -euo pipefail`: export the flattened container filesystem (works on both
+# stores); else sum the `docker save` layers, decompressing the gzip blobs the
+# containerd store emits where the graphdriver store emits plain tars; else the
+# raw stream count (correct only on the graphdriver store); else 0.
 measure_unpacked_bytes() {
-    local img=$1 sz=0 py
+    local img=$1 plat=${2:-} sz=0 py cname
+
+    # Preferred measure: the flattened filesystem of a container made from the
+    # image. It is what the board actually stores, and it is the one figure both
+    # image stores agree on. `docker save` cannot be relied on here: on a
+    # containerd image store that has only the requested platform's content of a
+    # multi-platform index, it refuses outright ("unable to create manifests
+    # file: NotFound: content digest ... not found"), and the size ladder below
+    # would then silently reserve nothing.
+    local -a pargs=()
+    if [ -n "$plat" ]; then pargs=(--platform "$plat"); fi
+    cname=tcb-genio-measure-$$-$RANDOM
+    if docker create ${pargs[@]+"${pargs[@]}"} --name "$cname" "$img" >/dev/null 2>&1; then
+        # An export that dies part way still exits wc successfully, and a short
+        # count here would under-reserve exactly as the bug being fixed did, so
+        # take the figure only when docker itself succeeded.
+        sz=$(docker export "$cname" 2>/dev/null | wc -c; exit "${PIPESTATUS[0]}") || sz=0
+        docker rm -f "$cname" >/dev/null 2>&1 || true
+        sz=${sz//[[:space:]]/}; case $sz in ''|*[!0-9]*) sz=0 ;; esac
+        if [ "${sz:-0}" -gt 0 ] 2>/dev/null; then
+            echo "$sz"; return
+        fi
+    fi
+
+    sz=0
     if command -v python3 >/dev/null 2>&1 && py=$(mktemp "${TMPDIR:-/tmp}/tcb-measure.XXXXXX"); then
         cat >"$py" <<'PY'
 import sys, tarfile, gzip, io
@@ -473,7 +495,14 @@ measure_bundle_kb() {
             note "bundle sizing: cannot pull $img ($plat); output image may be too small for the bundle" >&2
             echo 0; return
         fi
-        sz=$(measure_unpacked_bytes "$img")
+        sz=$(measure_unpacked_bytes "$img" "$plat")
+        # A zero here means every measure failed. Reserving the bare slack would
+        # look like a sizing decision and then overflow the rootfs at tar_in, so
+        # reserve nothing and say so, exactly as an unpullable image does.
+        if [ "${sz:-0}" -le 0 ] 2>/dev/null; then
+            note "bundle sizing: cannot measure $img; not reserving space (the bundle may not fit)" >&2
+            echo 0; return
+        fi
         total=$(( total + sz ))
     done <<< "$imgs"
 
