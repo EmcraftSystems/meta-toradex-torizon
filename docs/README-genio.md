@@ -178,7 +178,7 @@ $ genio-flash system
 ```
 
 The bridge rewrites the rootfs partition in place, so the customization must fit
-its free space (about 1 GB on the default image). A preloaded container bundle
+its free space (about 0.8 GB on the default image). A preloaded container bundle
 larger than that is handled by growing the output image, so it is not a limit on
 the bundle — but the grow makes the run's disk appetite scale with the bundle.
 
@@ -192,9 +192,9 @@ the directory it runs from. Budget
     10 x <tarball> + 2 x <unpacked bundle>
 
 on that filesystem. Without a bundle that is the familiar ten-times-the-tarball
-figure; with one the bundle term dominates. A 0.70 GiB tarball with an 8.17 GiB
+figure; with one the bundle term dominates. A 0.70 GiB tarball with an 8.13 GiB
 bundle peaked at 18.9 GiB in measurement — against the 7.0 GiB the tarball alone
-would suggest — for which this rule budgets 23.3 GiB.
+would suggest — for which this rule budgets 23.2 GiB.
 
 To work on a different disk, set `TMPDIR` to a directory there — it must be one
 the Docker daemon can also reach, so with snap-installed Docker keep it under
