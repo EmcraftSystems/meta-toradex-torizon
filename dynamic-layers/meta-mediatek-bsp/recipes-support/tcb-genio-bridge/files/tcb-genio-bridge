@@ -211,7 +211,9 @@ home:
 EOF
 }
 
-kb_gb() { awk -v k="$1" 'BEGIN { printf "%.1f GB", k / 1000000 }'; }
+# GiB, matching the units README-genio.md states the free-space rule in; the
+# same number in GB would not compare against the documented budget.
+kb_gb() { awk -v k="$1" 'BEGIN { printf "%.1f GiB", k / 1048576 }'; }
 
 # One throwaway container, before the minutes of unpacking that a bad mount
 # would waste. The probe is a shell script so there is no format to agree on
@@ -371,16 +373,48 @@ PY
         "$TCB_IMAGE" "/workdir/$LAUNCHER_NAME" "$@"
 }
 
-# Sum an image's *uncompressed* layer sizes, independent of the host's Docker
-# image store. `docker save` streams uncompressed layer tars on the classic
-# graphdriver store but gzip-compressed OCI blobs on the containerd image store,
-# so a plain `wc -c` of the stream is compressed on containerd and under-reserves
-# the grow. Decompress the gzip layers before counting so both stores yield the
-# unpacked footprint the board stores. Best-effort ladder: on any failure — no
-# python3, a malformed stream — fall back to the raw stream count (correct on the
-# graphdriver store), then to 0; never aborts under `set -euo pipefail`.
+# Measure an image's unpacked footprint, independent of the host's Docker image
+# store. Two rungs, in order: export the flattened container filesystem (works
+# on both stores), else sum the `docker save` layers, decompressing the gzip
+# blobs the containerd store emits where the graphdriver store emits plain tars.
+# Both yield an unpacked figure; there is deliberately no rung that returns a
+# compressed one, because a compressed figure under-reserves the grow and is
+# indistinguishable, to the caller, from a real measurement. If neither rung
+# works the function returns 0, meaning "unmeasurable", and the caller reserves
+# nothing rather than sizing from a fraction. Every step is guarded so the
+# function never aborts under `set -euo pipefail`.
 measure_unpacked_bytes() {
-    local img=$1 sz=0 py
+    local img=$1 plat=${2:-} sz=0 py cname
+
+    # Preferred measure: the flattened filesystem of a container made from the
+    # image. It is what the board actually stores, and it is the one figure both
+    # image stores agree on. `docker save` cannot be relied on here: on a
+    # containerd image store that has only the requested platform's content of a
+    # multi-platform index, it refuses outright ("unable to create manifests
+    # file: NotFound: content digest ... not found"), and the size ladder below
+    # would then silently reserve nothing.
+    local -a pargs=()
+    if [ -n "$plat" ]; then pargs=(--platform "$plat"); fi
+    cname=tcb-genio-measure-$$-$RANDOM
+    # The trailing /bin/true is never executed — the container is only created —
+    # but docker refuses to create one from an image that declares no CMD and no
+    # ENTRYPOINT, which a data-only payload image legitimately does not.
+    # The name carries $$, the top-level shell's pid even here inside the command
+    # substitution this function is always called from, so cleanup() can reap the
+    # container by prefix. A variable could not carry it: an assignment made in
+    # that subshell never reaches the parent that runs the trap.
+    if docker create ${pargs[@]+"${pargs[@]}"} --name "$cname" "$img" /bin/true >/dev/null 2>&1; then
+        # pipefail makes a failed export abort this substitution, which the
+        # `|| sz=0` catches; a short count is never mistaken for a measurement.
+        sz=$(docker export "$cname" 2>/dev/null | wc -c) || sz=0
+        docker rm -f "$cname" >/dev/null 2>&1 || true
+        sz=${sz//[[:space:]]/}; case $sz in ''|*[!0-9]*) sz=0 ;; esac
+        if [ "${sz:-0}" -gt 0 ] 2>/dev/null; then
+            echo "$sz"; return
+        fi
+    fi
+
+    sz=0
     if command -v python3 >/dev/null 2>&1 && py=$(mktemp "${TMPDIR:-/tmp}/tcb-measure.XXXXXX"); then
         cat >"$py" <<'PY'
 import sys, tarfile, gzip, io
@@ -434,10 +468,8 @@ PY
     if [ "${sz:-0}" -gt 0 ] 2>/dev/null; then
         echo "$sz"; return
     fi
-    note "bundle sizing: store-independent measure unavailable for $img; using raw docker-save size (may under-reserve on a containerd image store)" >&2
-    sz=$(docker save "$img" 2>/dev/null | wc -c) || sz=0
-    sz=${sz//[[:space:]]/}; case $sz in ''|*[!0-9]*) sz=0 ;; esac
-    echo "$sz"
+    note "bundle sizing: cannot measure the unpacked size of $img on this host" >&2
+    echo 0
 }
 
 # Measure the container bundle's on-disk size in KiB. tcb sizes the output image
@@ -449,8 +481,14 @@ PY
 # before, with a warning.
 measure_bundle_kb() {
     local yaml=$1 compose=$2
-    [ -n "$compose" ] || { echo 0; return; }
-    grep -qE '^[[:space:]]*bundle:[[:space:]]*$' "$yaml" || { echo 0; return; }
+    # Keyed off the caller's bundle_configured, not a second regex: a stricter
+    # pattern here would silently skip the reservation for a bundle the rest of
+    # the run still preloads.
+    [ "${bundle_configured:-0}" = 1 ] || { echo 0; return; }
+    if [ -z "$compose" ]; then
+        note "bundle sizing: no compose file to measure; not reserving space (the bundle may not fit)" >&2
+        echo 0; return
+    fi
 
     local plat
     # assumes the config's only platform: key is the bundle block's
@@ -473,7 +511,14 @@ measure_bundle_kb() {
             note "bundle sizing: cannot pull $img ($plat); output image may be too small for the bundle" >&2
             echo 0; return
         fi
-        sz=$(measure_unpacked_bytes "$img")
+        sz=$(measure_unpacked_bytes "$img" "$plat")
+        # A zero here means every measure failed. Reserving the bare slack would
+        # look like a sizing decision and then overflow the rootfs at tar_in, so
+        # reserve nothing and say so, exactly as an unpullable image does.
+        if [ "${sz:-0}" -le 0 ] 2>/dev/null; then
+            note "bundle sizing: cannot measure $img; not reserving space (the bundle may not fit)" >&2
+            echo 0; return
+        fi
         total=$(( total + sz ))
     done <<< "$imgs"
 
@@ -562,7 +607,20 @@ done
 [ -n "${work:-}" ] || die "could not create a working directory in $PWD or /tmp"
 # A cleanup failure must not fail a run that produced its tarball: tcb writes
 # root-owned directories in here.
-trap 'rm -rf "$work" 2>/dev/null || note "left behind: $work"' EXIT
+# INT/TERM as well as EXIT: an interrupt during the bundle measurement would
+# otherwise leave a measurement container holding a writable layer that pins its
+# image against docker rmi. The containers are found by their $$ prefix rather
+# than by a variable, which the command substitution around the measurement
+# would swallow.
+cleanup() {
+    [ -n "${cleaned:-}" ] && return 0
+    cleaned=1
+    docker ps -aq --filter "name=tcb-genio-measure-$$-" 2>/dev/null \
+        | xargs -r docker rm -f >/dev/null 2>&1 || true
+    rm -rf "$work" 2>/dev/null || note "left behind: $work"
+}
+trap cleanup EXIT
+trap 'trap - EXIT; cleanup; exit 130' INT TERM
 [ "$work" = "$PWD/${work##*/}" ] || note "working files: $work"
 
 # The socket and --net=host are wanted only when a preload is actually
@@ -582,11 +640,33 @@ fi
 
 if [ -z "${TCB_GENIO_SKIP_PREFLIGHT:-}" ]; then
     probe_workdir || exit 1
+fi
+
+# Size the bundle before the space check, not after: the output image, the
+# re-sparsed image and the output tarball all grow with the bundle, so a check
+# that knows only the input tarball is blind to the term that dominates at
+# scale. (see measure_bundle_kb) The launcher adds this to tcb's rootfs-based
+# sizing so the preload fits.
+export TCB_GENIO_BUNDLE_KB
+TCB_GENIO_BUNDLE_KB=$(measure_bundle_kb "$yaml" "$compose")
+if [ "${TCB_GENIO_BUNDLE_KB:-0}" -gt 0 ] 2>/dev/null; then
+    note "reserving $(( TCB_GENIO_BUNDLE_KB / 1024 )) MiB of image growth for the container bundle"
+fi
+
+if [ -z "${TCB_GENIO_SKIP_PREFLIGHT:-}" ]; then
     # Peak usage is the unpacked tarball plus the unsparsed input and output
-    # images; measured at ~10x the tarball. A warning, not a refusal — the
-    # figure is an estimate and a wrong one must not block a working run.
+    # images, plus the bundle carried in three of them: ~10x the tarball plus
+    # ~2x the unpacked bundle. TCB_GENIO_BUNDLE_KB is the reservation, which is
+    # the unpacked size plus a margin, so the margin is divided back out to keep
+    # this the same rule README-genio.md gives the reader. A warning, not a
+    # refusal — the figure is an estimate and a wrong one must not block a
+    # working run.
+    unpacked_kb=0
+    if [ "$TCB_GENIO_BUNDLE_KB" -gt 65536 ] 2>/dev/null; then
+        unpacked_kb=$(( (TCB_GENIO_BUNDLE_KB - 65536) * 10 / 11 ))
+    fi
     avail_kb=$(df -Pk "$work" | awk 'NR==2 {print $4}')
-    need_kb=$(( $(wc -c < "$in_tar") / 1024 * 10 ))
+    need_kb=$(( $(wc -c < "$in_tar") / 1024 * 10 + unpacked_kb * 2 ))
     [ "${avail_kb:-0}" -ge "$need_kb" ] 2>/dev/null || msg_E "${avail_kb:-0}" "$need_kb"
 fi
 
@@ -626,13 +706,7 @@ simg2img "$sparse" "$work/tcb/input.wic"
 # 3. Run torizoncore-builder against the raw image. The raw-image input/output
 #    blocks live in the YAML; tcb rewrites only the otaroot rootfs and copies
 #    the bootloader partition through untouched.
-# Reserve output-image growth for the container bundle (see measure_bundle_kb):
-# the launcher adds this to tcb's rootfs-based sizing so the preload fits.
-export TCB_GENIO_BUNDLE_KB
-TCB_GENIO_BUNDLE_KB=$(measure_bundle_kb "$yaml" "$compose")
-if [ "${TCB_GENIO_BUNDLE_KB:-0}" -gt 0 ] 2>/dev/null; then
-    note "reserving $(( TCB_GENIO_BUNDLE_KB / 1024 )) MiB of image growth for the container bundle"
-fi
+# TCB_GENIO_BUNDLE_KB was measured and exported before the space check above.
 note "running torizoncore-builder build"
 # -e assignments first: tcb's parse_assignments lets the last --set win, so an
 # explicit --set after -- overrides an -e of the same variable.
