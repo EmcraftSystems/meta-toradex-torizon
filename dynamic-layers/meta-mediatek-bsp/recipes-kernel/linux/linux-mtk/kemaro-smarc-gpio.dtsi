@@ -3,19 +3,10 @@
  * pio58=CAM1_RST#(GPIO3) pio118=HDA_RST#(GPIO4) pio72=PWM_OUT(GPIO5)
  * pio119=TACHIN(GPIO6).
  *
- * Names only, deliberately: these pads are already ALT0=GPIO at reset and the
- * pin controller re-muxes a pad to GPIO when the line is requested, so a
- * pinmux group would add nothing an application needs. Anything that also
- * claims or pre-sets the lines takes them away from userspace or, as a
- * pinctrl default state on this node, risks failing the controller's probe.
- *
+ * Names only: the pads are ALT0=GPIO and the controller re-muxes on request.
  * gpio-line-names is positional from offset 0, hence the leading blanks.
  *
- * TACHIN is a carrier fan-tach input on the ADLINK reference carrier: an
- * application driving pio119 there contends with the fan. Not an issue on the
- * Kemaro carrier, whose net list governs.
- *
- * Carrier-only; not part of the upstream Toradex port. */
+ * Applied to every lec-mtk1200 build; drop before upstream delivery. */
 &pio {
 	gpio-line-names =
 		/*   0.. 9 */ "", "", "", "", "", "", "", "", "", "",
