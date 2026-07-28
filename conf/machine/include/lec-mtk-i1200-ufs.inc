@@ -16,3 +16,7 @@ OSTREE_KERNEL_ARGS:sota:lec-mtk1200 = "logo.nologo vt.global_cursor_default=0 pl
 
 # The board carries a TPM2.0.
 DISTRO_FEATURES:append = " tpm2"
+
+# RTL8821AU USB Wi-Fi driver (recipes-kernel/rtw88); named by PN since
+# only the kernel recipe declares PACKAGES_DYNAMIC for kernel-module-*.
+IMAGE_INSTALL:append = " rtw88"
