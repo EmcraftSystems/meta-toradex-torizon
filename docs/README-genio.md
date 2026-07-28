@@ -146,7 +146,17 @@ TorizonCore Builder customization to the genio-flash image. The Genio target
 ships as an `aiotflash.tar` wrapping an Android-sparse WIC, which TCB's raw-image
 path can't read directly, so the bridge unwraps and unsparses the tarball, runs
 TCB against the system image, re-sparses, and repacks it — only the rootfs
-changed, partition layout preserved. Rootfs-level customizations (filesystem
+changed, partition layout preserved.
+
+The customized image keeps the base image's `/var` state, so it provisions on
+the Torizon Cloud exactly as the stock image does. TCB itself restores only the
+home directories when it builds the new OSTree deployment, which drops
+`/var/sota` — the update client's storage, and where the cloud provisioning
+procedure writes `auto-provisioning.json` — so the bridge carries that state
+across. The base image's installed-versions record is deliberately not carried:
+it names the base commit, and the customized image boots a different one.
+
+Rootfs-level customizations (filesystem
 overlays, preloaded containers) are supported; device-tree, kernel-argument,
 U-Boot-env, and splash edits are not (TCB rejects them on raw/WIC images).
 

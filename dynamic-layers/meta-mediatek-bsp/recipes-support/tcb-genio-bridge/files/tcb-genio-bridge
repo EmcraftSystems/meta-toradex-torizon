@@ -368,10 +368,14 @@ def _deploy_local_carrying_var(src_sysroot_dir, src_ostree_archive_dir,
                               dst_sysroot_dir, ref)
     var = os.path.join("ostree/deploy", _deploy.OSNAME, "var")
     src, dst = os.path.join(src_sysroot_dir, var), os.path.join(dst_sysroot_dir, var)
-    if not os.path.isdir(os.path.join(src, "sota")):
-        raise TorizonCoreBuilderError(
-            "the input image has no ostree/deploy/%s/var/sota; it does not look "
-            "like a Torizon OS image built for this board" % _deploy.OSNAME)
+    # An image customised by a bridge older than this one has already lost
+    # var/sota, so refusing it here would reject exactly the input this change
+    # exists to repair. Carry what is there and let the target's tmpfiles rule
+    # create the directory.
+    src_has_sota = os.path.isdir(os.path.join(src, "sota"))
+    if not src_has_sota:
+        print("tcb-genio-bridge: input image has no var/sota to carry; the "
+              "customised image will create it at first boot", file=sys.stderr)
     for name in sorted(os.listdir(src)):
         # .ostree-selabeled marks the new deployment as already SELinux-labelled;
         # it belongs to that deployment, not to the one being copied from.
@@ -394,7 +398,7 @@ def _deploy_local_carrying_var(src_sysroot_dir, src_ostree_archive_dir,
     stale = os.path.join(dst, "sota", "import", "installed_versions")
     if os.path.exists(stale):
         os.remove(stale)
-    if not os.path.isdir(os.path.join(dst, "sota")):
+    if src_has_sota and not os.path.isdir(os.path.join(dst, "sota")):
         raise TorizonCoreBuilderError(
             "the base deployment's var/sota did not reach the customised image")
     return csum
