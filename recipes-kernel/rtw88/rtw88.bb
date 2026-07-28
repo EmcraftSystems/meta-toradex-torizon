@@ -23,6 +23,20 @@ WARN_QA:remove = "buildpaths"
 # dependency, not just rtw_core/rtw_usb.
 RTW88_MODULES = "rtw_core rtw_usb rtw_88xxa rtw_8821a rtw_8821au"
 
+# Build only the modules listed in RTW88_MODULES.
+do_compile() {
+	unset CFLAGS CPPFLAGS CXXFLAGS LDFLAGS
+	oe_runmake -C ${STAGING_KERNEL_DIR} M=${S} \
+		   KERNEL_PATH=${STAGING_KERNEL_DIR} \
+		   KERNEL_VERSION=${KERNEL_VERSION} \
+		   CC="${KERNEL_CC}" LD="${KERNEL_LD}" \
+		   AR="${KERNEL_AR}" OBJCOPY="${KERNEL_OBJCOPY}" \
+		   STRIP="${KERNEL_STRIP}" \
+		   O=${STAGING_KERNEL_BUILDDIR} \
+		   KBUILD_EXTRA_SYMBOLS="${KBUILD_EXTRA_SYMBOLS}" \
+		   $(for mod in ${RTW88_MODULES}; do echo -n "$mod.ko "; done)
+}
+
 # module.bbclass's default do_install (`make modules_install`) isn't
 # provided by this Makefile — stage the .kos ourselves.
 do_install() {
@@ -33,7 +47,8 @@ do_install() {
 	done
 }
 
-# kernel-module-* names are kernel-module-split's unversioned RPROVIDES
-# aliases, resolvable only after this recipe's do_package runs; rtw8821a's
-# fw.bin ships in linux-firmware-rtl8821.
-RDEPENDS:${PN} = "kernel-module-rtw-core kernel-module-rtw-usb kernel-module-rtw-88xxa kernel-module-rtw-8821a kernel-module-rtw-8821au linux-firmware-rtl8821"
+# The five kernel-module-rtw-* packages reach ${PN}'s RDEPENDS on their
+# own (module.bbclass's KERNEL_MODULES_META_PACKAGE = "${PN}" wires split
+# kernel modules up automatically); rtw8821a's fw.bin doesn't come from
+# this recipe, so it's the one dependency still declared explicitly.
+RDEPENDS:${PN} = "linux-firmware-rtl8821"
