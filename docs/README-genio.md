@@ -156,14 +156,102 @@ procedure writes `auto-provisioning.json` — so the bridge carries that state
 across. The base image's installed-versions record is deliberately not carried:
 it names the base commit, and the customized image boots a different one.
 
-Rootfs-level customizations (filesystem
-overlays, preloaded containers) are supported; device-tree, kernel-argument,
-U-Boot-env, and splash edits are not (TCB rejects them on raw/WIC images).
+Host prerequisites
+------
+Docker and `simg2img`/`img2simg` (`android-sdk-libsparse-utils`). The bridge
+runs TCB from its `torizon/torizoncore-builder` container image, pulled on
+first run — no separate `torizoncore-builder` install.
 
-Host prerequisites: Docker and `simg2img`/`img2simg`
-(`android-sdk-libsparse-utils`). The bridge runs TCB from its
-`torizon/torizoncore-builder` container image, pulled on first run — no separate
-`torizoncore-builder` install.
+Customization classes
+------
+The bridge delivers rootfs-level content into the OSTree rootfs:
+
+* File and directory overlays — one `changes/` tree, or several supplied with
+  repeatable `-c`, applied in the order listed in `tcbuild-genio.yaml`'s
+  `customization.filesystem`. Config files go under `usr/etc/` (the OSTree
+  factory-config location), not a top-level `etc/` — a committed `/etc`
+  collides with the base `/usr/etc` and the bridge aborts the deploy.
+* Yocto packages delivered as installed files (e.g. `usr/bin/`, `usr/lib/`),
+  through the same overlay mechanism.
+* Prebuilt kernel modules dropped in as `.ko` files. A drop-in is not
+  `depmod`-indexed, so load it on the target with `insmod` of its full path,
+  not `modprobe`.
+* Preloaded containers, from a `docker-compose` bundle (see below).
+* Run-time value and registry-credential substitution, so secrets are not
+  committed to `tcbuild-genio.yaml` (see `-e` below).
+
+Not supported: `torizoncore-builder` rejects these customisation classes
+outright when the target is a raw/WIC image — which the Genio system image
+is — regardless of the bridge:
+
+* Kernel module build (the DKMS / in-tree-build route — as opposed to the
+  prebuilt `.ko` drop-in above, which is supported)
+* Kernel-argument changes
+* Device-tree overlays
+* U-Boot-env edits (`torizoncore-builder` does not support bootloader
+  (U-Boot) customization on any image, not only raw/WIC)
+* Secure-boot signing
+
+`torizoncore-builder`'s error is verbatim:
+
+```
+Kernel customization is not supported for WIC/raw images. Aborting.
+```
+
+A kernel-level change instead needs a BSP rebuild and reflash: an in-tree
+driver is enabled as a kernel module on request, and an out-of-tree driver is
+delivered as a Yocto recipe.
+
+Command-line reference
+------
+Kept in sync with `tcb-genio-bridge -h`; update both together when a flag
+changes.
+
+```
+$ ./tcb-genio-bridge [-o OUTPUT_TAR] [-f TCBUILD_YAML] [-c CHANGES_DIR]... \
+      [-b COMPOSE_FILE] [-e VAR]... INPUT_TAR [-- TCB_BUILD_ARG...]
+```
+
+* `INPUT_TAR` — the `aiotflash.tar` produced by the Yocto build.
+* `-o OUTPUT_TAR` — repacked tarball (default: `<INPUT_TAR without .tar>-custom.tar`).
+* `-f TCBUILD_YAML` — the tcbuild config to use (default: `tcbuild-genio.yaml`
+  beside the script).
+* `-c CHANGES_DIR` — a directory of files to overlay onto the rootfs.
+  Repeatable; each is staged under its own basename and applied in the order
+  `customization.filesystem` lists it in `tcbuild-genio.yaml` (default:
+  `./changes` if present). The basename must be letters, digits, `.`, `_` or
+  `-`, and must not begin with `-`. A directory staged here but left out of
+  `customization.filesystem` is silently not applied — no error, nothing
+  overlaid.
+* `-b COMPOSE_FILE` — the `docker-compose` file for a container-preload bundle
+  (default: `./docker-compose.yml` if present). Its basename must match the
+  tcbuild config's `bundle.compose-file`.
+* `-e VAR` — forward `VAR`'s value from the build-host environment to the
+  config's `${VAR}` substitution, as `--set VAR=<value>`. Repeatable. `VAR`
+  must be exported (a plain shell assignment is not enough — an unexported
+  `VAR` is a hard error); an exported-but-empty `VAR` still forwards an empty
+  value. Keeps a secret (e.g. a private-registry password) out of the shell
+  command line, history, terminal scrollback, and CI logs — but not out of
+  the process argument list, which is visible in host `ps` output and in
+  `docker inspect` of the tcb container for the run's duration.
+* `-- TCB_BUILD_ARG...` — everything after `--` is appended to the
+  `torizoncore-builder` build invocation unchanged, e.g.
+  `-- --set PASSWORD=secret`. Any of its options can be forwarded this way,
+  not only `--set`.
+
+Environment variables:
+
+* `TMPDIR` — working directory for the bridge's intermediate files (see
+  "Host free space" below).
+* `TCB_GENIO_SKIP_PREFLIGHT=1` — skip the Docker-mount and free-space
+  preflight checks.
+* `TCB_IMAGE` — override the `torizoncore-builder` container image tag
+  (default: `torizon/torizoncore-builder:3`).
+
+Performing image customization
+------
+Prepare your customization — a `changes/` overlay, a container bundle, or both
+(see Customization classes above).
 
 Deploy the bridge and collect it beside the image:
 ```
@@ -172,8 +260,8 @@ $ cd ~/yocto-workdir/build-lec-mtk-i1200/deploy/images/lec-mtk-i1200-ufs/
 $ cp tcb-genio-bridge/tcb-genio-bridge tcb-genio-bridge/tcbuild-genio.yaml .
 ```
 
-Prepare your customization as usual — a `changes/` overlay and/or a container
-`bundle` in `tcbuild-genio.yaml` — then run the bridge against the tarball:
+Run the bridge against the tarball (see Command-line reference above for the
+full flag list):
 ```
 $ ./tcb-genio-bridge -o custom.tar torizon-docker-lec-mtk-i1200-ufs.aiotflash.tar
 ```
