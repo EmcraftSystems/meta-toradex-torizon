@@ -295,6 +295,7 @@ def _add(self, filename, **kw):
 guestfs.GuestFS.add_drive_opts = _add
 import tcbuilder.backend.dt          # import dt before deploy to break tcb's kernel<->dt cycle
 import tcbuilder.backend.deploy as _deploy
+from tcbuilder.errors import TorizonCoreBuilderError
 
 SECTOR_SIZE = 4096
 
@@ -361,18 +362,30 @@ def _deploy_local_carrying_var(src_sysroot_dir, src_ostree_archive_dir,
     # tcb restores only var/rootdirs from the base deployment, so a customised
     # image loses /var/sota - the update client's state directory, and where the
     # documented cloud-provisioning procedure writes its configuration. Carry
-    # every top-level entry the new deployment does not already have: naming the
-    # ones we know about is what produced this bug in the first place.
+    # every top-level entry the new deployment does not already provide, so state
+    # added to that directory in future is carried without another list to update.
     csum = _orig_deploy_local(src_sysroot_dir, src_ostree_archive_dir,
                               dst_sysroot_dir, ref)
     var = os.path.join("ostree/deploy", _deploy.OSNAME, "var")
     src, dst = os.path.join(src_sysroot_dir, var), os.path.join(dst_sysroot_dir, var)
+    if not os.path.isdir(os.path.join(src, "sota")):
+        raise TorizonCoreBuilderError(
+            "the input image has no ostree/deploy/%s/var/sota; it does not look "
+            "like a Torizon OS image built for this board" % _deploy.OSNAME)
     for name in sorted(os.listdir(src)):
         # .ostree-selabeled marks the new deployment as already SELinux-labelled;
         # it belongs to that deployment, not to the one being copied from.
-        if name == ".ostree-selabeled" or os.path.exists(os.path.join(dst, name)):
+        # lexists, not exists: var/run and var/lock are symlinks the new
+        # deployment provides that dangle until the image is mounted, and exists()
+        # would report them missing and copy the base's over them.
+        if name == ".ostree-selabeled" or os.path.lexists(os.path.join(dst, name)):
             continue
-        subprocess.check_call(["cp", "-a", "-t", dst, os.path.join(src, name)])
+        try:
+            subprocess.check_call(["cp", "-a", "-t", dst, os.path.join(src, name)])
+        except subprocess.CalledProcessError as exc:
+            raise TorizonCoreBuilderError(
+                "could not carry var/%s from the base image into the customised "
+                "one" % name) from exc
     # The base image's installed_versions names the base commit, but the
     # customised image deploys the union commit, so the carried file would tell
     # the device it is running something it is not. There is no truthful
@@ -381,13 +394,9 @@ def _deploy_local_carrying_var(src_sysroot_dir, src_ostree_archive_dir,
     stale = os.path.join(dst, "sota", "import", "installed_versions")
     if os.path.exists(stale):
         os.remove(stale)
-    # Post-condition, not a pre-flight attribute check: the image tag floats, so
-    # a silent no-op is as likely as a rename and this catches both.
     if not os.path.isdir(os.path.join(dst, "sota")):
-        raise RuntimeError(
-            "tcb-genio-bridge: the base deployment's var/sota was not carried "
-            "into the customised image; torizoncore-builder's deploy path has "
-            "changed under this patch")
+        raise TorizonCoreBuilderError(
+            "the base deployment's var/sota did not reach the customised image")
     return csum
 
 _deploy.deploy_ostree_local = _deploy_local_carrying_var
