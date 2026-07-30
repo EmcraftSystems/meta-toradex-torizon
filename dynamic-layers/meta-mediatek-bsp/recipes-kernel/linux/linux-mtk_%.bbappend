@@ -11,7 +11,7 @@ WARN_QA:remove = "buildpaths"
 
 FILESEXTRAPATHS:prepend := "${THISDIR}/${BPN}:"
 
-# Kemaro-carrier SMARC GPIO0..6 line names. The vendor do_copy_source drops the
+# Kemaro-carrier SMARC GPIO line names. The vendor do_copy_source drops the
 # ADLINK board DTS into the kernel tree *after* do_patch, so a plain SRC_URI
 # patch has nothing to apply against; amend the copied DTS in a post-copy step.
 SRC_URI:append:lec-mtk1200 = " file://kemaro-smarc-gpio.dtsi"

@@ -1,12 +1,13 @@
-/* Kemaro carrier: name SMARC GPIO0..GPIO6 and leave them free for userspace.
- * pio60=CAM0_PWR#(GPIO0) pio59=CAM1_PWR#(GPIO1) pio57=CAM0_RST#(GPIO2)
+/* Kemaro carrier: name the SMARC GPIO lines reaching the user header and
+ * leave them free for userspace. Applied to every lec-mtk1200 build; drop
+ * before upstream delivery. */
+
+/* pio60=CAM0_PWR#(GPIO0) pio59=CAM1_PWR#(GPIO1) pio57=CAM0_RST#(GPIO2)
  * pio58=CAM1_RST#(GPIO3) pio118=HDA_RST#(GPIO4) pio72=PWM_OUT(GPIO5)
  * pio119=TACHIN(GPIO6).
  *
  * Names only: the pads are ALT0=GPIO and the controller re-muxes on request.
- * gpio-line-names is positional from offset 0, hence the leading blanks.
- *
- * Applied to every lec-mtk1200 build; drop before upstream delivery. */
+ * gpio-line-names is positional from offset 0, hence the leading blanks. */
 &pio {
 	gpio-line-names =
 		/*   0.. 9 */ "", "", "", "", "", "", "", "", "", "",
@@ -25,4 +26,19 @@
 		/* 110..117 */ "", "", "", "", "", "", "", "",
 		/*     118 */ "kemaro-gpio4",
 		/*     119 */ "kemaro-gpio6";
+};
+
+/* On-module SX1509: I/O1..I/O4, I/O13 and I/O14 are SMARC GPIO7..GPIO12.
+ * I/O0 is the header level-shifter enable, left nameless so it is not
+ * discoverable as an application line. */
+&gpio0 {
+	gpio-line-names =
+		/*      0 */ "",
+		/*      1 */ "kemaro-gpio7",
+		/*      2 */ "kemaro-gpio8",
+		/*      3 */ "kemaro-gpio9",
+		/*      4 */ "kemaro-gpio10",
+		/*  5..12 */ "", "", "", "", "", "", "", "",
+		/*     13 */ "kemaro-gpio11",
+		/*     14 */ "kemaro-gpio12";
 };
