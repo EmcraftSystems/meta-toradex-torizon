@@ -1,16 +1,15 @@
-# systemd's net_id emits no host-controller component for a device-tree-described
-# platform xHCI, so an adapter on root-hub port 1 of any of the MT8195's four
-# controllers computes the same wlu1 and the second one's rename fails EEXIST,
-# leaving it at wlan0. Name from the MAC instead — it cannot collide, and unlike a
-# per-socket path it survives a carrier revision. Wireless-only so the on-board and
-# on-carrier Ethernet keep the names in service; sorts ahead of 99-default.link,
-# whose leading "path" policy is the colliding one.
+# net_id emits no host-controller component for a device-tree-described platform
+# xHCI, so an adapter on root-hub port 1 of any of this SoC's four controllers
+# computes the same wlu1 and the second one's rename fails EEXIST. Name from the
+# MAC instead; keep path after it, because a first match here means
+# 99-default.link is never consulted and mac yields nothing for an adapter whose
+# address is not permanent.
 
 [Match]
 Type=wlan
 Property=ID_BUS=usb
 
 [Link]
-NamePolicy=keep kernel database onboard slot mac
-AlternativeNamesPolicy=database onboard slot
+NamePolicy=keep kernel database onboard slot mac path
+AlternativeNamesPolicy=database onboard slot path
 MACAddressPolicy=persistent
