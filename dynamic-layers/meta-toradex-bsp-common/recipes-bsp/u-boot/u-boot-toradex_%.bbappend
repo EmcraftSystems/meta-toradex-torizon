@@ -1,4 +1,3 @@
-require recipes-bsp/u-boot/u-boot-fuse.inc
 require recipes-bsp/u-boot/u-boot-ota.inc
 require recipes-bsp/u-boot/u-boot-rollback.inc
 require recipes-bsp/u-boot/u-boot-tcb-sign.inc
