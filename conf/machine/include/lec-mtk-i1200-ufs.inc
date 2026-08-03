@@ -24,3 +24,7 @@ IMAGE_INSTALL:append = " rtw88"
 # MAC-based naming for USB wireless interfaces (recipes-bsp/usb-wifi-naming);
 # net_id cannot distinguish two adapters on this SoC's four USB controllers.
 IMAGE_INSTALL:append = " usb-wifi-naming"
+
+# Build and deploy host-side genio2img/img2genio torizoncore-builder
+# converters alongside the image.
+EXTRA_IMAGEDEPENDS:append = " tcb-genio-bridge"
