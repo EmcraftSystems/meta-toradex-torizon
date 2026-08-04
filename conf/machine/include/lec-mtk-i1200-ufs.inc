@@ -20,3 +20,7 @@ DISTRO_FEATURES:append = " tpm2"
 # Build and deploy host-side genio2img/img2genio torizoncore-builder
 # converters alongside the image.
 EXTRA_IMAGEDEPENDS:append = " genio2img-tools"
+
+# RTL8821AU USB Wi-Fi driver (recipes-kernel/rtw88); named by PN since
+# only the kernel recipe declares PACKAGES_DYNAMIC for kernel-module-*.
+IMAGE_INSTALL:append = " rtw88"
