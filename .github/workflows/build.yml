@@ -32,11 +32,15 @@ jobs:
           REF="$GITHUB_REF_NAME"
           BBLOG=$(mktemp)
 
+          # The CI tree is shared with the build account and owned by it, so
+          # git's ownership check refuses the layer under the runner's account.
+          GIT="git -c safe.directory=$LAYER -C $LAYER"
+
           echo "::group::Checkout $REF in the CI-tree fork layer"
-          git -C "$LAYER" fetch emcraft --prune || exit 1
-          git -C "$LAYER" fetch emcraft "$REF" || { echo "error: ref '$REF' not found on the emcraft remote"; exit 1; }
-          git -C "$LAYER" checkout -f FETCH_HEAD || exit 1
-          git -C "$LAYER" log --oneline -1
+          $GIT fetch emcraft --prune || exit 1
+          $GIT fetch emcraft "$REF" || { echo "error: ref '$REF' not found on the emcraft remote"; exit 1; }
+          $GIT checkout -f FETCH_HEAD || exit 1
+          $GIT log --oneline -1
           echo "::endgroup::"
 
           echo "::group::bitbake torizon-docker"
