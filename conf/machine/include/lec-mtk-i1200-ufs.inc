@@ -21,7 +21,7 @@ DISTRO_FEATURES:append = " tpm2"
 # only the kernel recipe declares PACKAGES_DYNAMIC for kernel-module-*.
 IMAGE_INSTALL:append = " rtw88"
 
-# MAC-based naming for USB wireless interfaces (recipes-bsp/usb-wifi-naming);
+# Socket-tied naming for USB wireless interfaces (recipes-bsp/usb-wifi-naming);
 # net_id cannot distinguish two adapters on this SoC's four USB controllers.
 IMAGE_INSTALL:append = " usb-wifi-naming"
 
