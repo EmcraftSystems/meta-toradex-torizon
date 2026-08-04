@@ -1,4 +1,4 @@
-# SMARC USB5 = module hub USB5807C downstream port 6 (USB2DN_DP6). No carrier in use brings this signal out.
+# SMARC USB5 = module hub USB5807C downstream port 6 (USB2DN_DP6).
 [Match]
 Type=wlan
 Path=platform-11200000.usb-usb-0:1.6:*
@@ -6,4 +6,5 @@ Path=platform-11200000.usb-usb-0:1.6:*
 [Link]
 NamePolicy=keep
 Name=wlan-usb5
+AlternativeNamesPolicy=database onboard slot
 MACAddressPolicy=persistent

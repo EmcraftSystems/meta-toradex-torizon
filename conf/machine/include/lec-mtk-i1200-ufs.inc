@@ -22,7 +22,7 @@ DISTRO_FEATURES:append = " tpm2"
 IMAGE_INSTALL:append = " rtw88"
 
 # Socket-tied naming for USB wireless interfaces (recipes-bsp/usb-wifi-naming);
-# net_id cannot distinguish two adapters on this SoC's four USB controllers.
+# the name must be fixed to the SMARC socket, identical on every unit.
 IMAGE_INSTALL:append = " usb-wifi-naming"
 
 # Build and deploy host-side genio2img/img2genio torizoncore-builder
