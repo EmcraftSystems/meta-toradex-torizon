@@ -6,5 +6,4 @@ Path=platform-112b0000.usb-usb-0:1:*
 [Link]
 NamePolicy=keep
 Name=wlan-usb1
-AlternativeNamesPolicy=database onboard slot
 MACAddressPolicy=persistent

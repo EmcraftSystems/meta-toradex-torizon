@@ -14,8 +14,8 @@ USB_WIFI_LINK_FILES = "60-wlan-usb0.link 61-wlan-usb1.link 62-wlan-usb2.link \
 SRC_URI = "${@' '.join('file://' + f for f in d.getVar('USB_WIFI_LINK_FILES').split())}"
 
 PACKAGE_ARCH = "${MACHINE_ARCH}"
-# lec-mtk1200 is the override token this layer keys on; the MACHINE is
-# lec-mtk-i1200-ufs, so matching on that would miss.
+# Module-level override token, shared by the UFS and QSPI machines; the .link
+# files encode module wiring, which is valid on either.
 COMPATIBLE_MACHINE = "^lec-mtk1200$"
 INHIBIT_DEFAULT_DEPS = "1"
 

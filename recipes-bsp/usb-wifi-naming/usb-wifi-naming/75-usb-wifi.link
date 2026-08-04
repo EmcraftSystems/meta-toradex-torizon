@@ -10,5 +10,4 @@ Property=ID_BUS=usb
 
 [Link]
 NamePolicy=keep kernel database onboard slot mac path
-AlternativeNamesPolicy=database onboard slot
 MACAddressPolicy=persistent
