@@ -34,13 +34,16 @@ jobs:
 
           # The CI tree is shared with the build account and owned by it, so
           # git's ownership check refuses the layer under the runner's account.
-          GIT="git -c safe.directory=$LAYER -C $LAYER"
+          # Only system and global scope are honoured for this key — `-c` and
+          # the GIT_CONFIG_* environment are ignored for it by design.
+          git config --global --get-all safe.directory | grep -qxF "$LAYER" \
+            || git config --global --add safe.directory "$LAYER"
 
           echo "::group::Checkout $REF in the CI-tree fork layer"
-          $GIT fetch emcraft --prune || exit 1
-          $GIT fetch emcraft "$REF" || { echo "error: ref '$REF' not found on the emcraft remote"; exit 1; }
-          $GIT checkout -f FETCH_HEAD || exit 1
-          $GIT log --oneline -1
+          git -C "$LAYER" fetch emcraft --prune || exit 1
+          git -C "$LAYER" fetch emcraft "$REF" || { echo "error: ref '$REF' not found on the emcraft remote"; exit 1; }
+          git -C "$LAYER" checkout -f FETCH_HEAD || exit 1
+          git -C "$LAYER" log --oneline -1
           echo "::endgroup::"
 
           echo "::group::bitbake torizon-docker"
