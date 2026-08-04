@@ -1,9 +1,7 @@
-# net_id emits no host-controller component for a device-tree-described platform
-# xHCI, so an adapter on root-hub port 1 of any of this SoC's four controllers
-# computes the same wlu1 and the second one's rename fails EEXIST. Name from the
-# MAC instead; keep path after it, because a first match here means
-# 99-default.link is never consulted and mac yields nothing for an adapter whose
-# address is not permanent.
+# Catch-all for adapters below the module's own sockets. net_id emits no
+# host-controller component for a device-tree platform xHCI, so two at the same
+# port index collide; name from the MAC, path last because a first match here
+# means 99-default.link is never reached.
 
 [Match]
 Type=wlan
@@ -11,5 +9,4 @@ Property=ID_BUS=usb
 
 [Link]
 NamePolicy=keep kernel database onboard slot mac path
-AlternativeNamesPolicy=database onboard slot path
 MACAddressPolicy=persistent
