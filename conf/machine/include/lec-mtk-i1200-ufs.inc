@@ -24,3 +24,7 @@ EXTRA_IMAGEDEPENDS:append = " genio2img-tools"
 # RTL8821AU USB Wi-Fi driver (recipes-kernel/rtw88); named by PN since
 # only the kernel recipe declares PACKAGES_DYNAMIC for kernel-module-*.
 IMAGE_INSTALL:append = " rtw88"
+
+# Socket-tied naming for USB wireless interfaces (recipes-bsp/usb-wifi-naming);
+# the name must be fixed to the SMARC socket, identical on every unit.
+IMAGE_INSTALL:append = " usb-wifi-naming"
