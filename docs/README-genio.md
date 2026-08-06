@@ -141,52 +141,56 @@ torizon-lec-mtk-i1200-ufs login:
 Customizing with TorizonCore Builder
 ======
 The Genio target ships as an `aiotflash.tar` wrapping an Android-sparse WIC,
-which TorizonCore Builder's (TCB's) raw-image path can't read directly:
-`genio2img` unwraps and unsparses the tarball so a released
-`torizoncore-builder` can run against the system image directly, and
-`img2genio` re-sparses and repacks the result — only the rootfs changed,
-partition layout preserved. Rootfs-level customizations (filesystem overlays,
-preloaded containers) are supported; device-tree, kernel-argument, U-Boot-env,
-and splash edits are not (TCB rejects them on raw/WIC images). Requires a
-`torizoncore-builder` release with `--raw-sector-size` support (the Genio
-system image is 4Kn) and `android-sdk-libsparse-utils` on the host.
+which TorizonCore Builder (TCB) can't read directly. Two independent tools
+bridge that gap, built from the same `tcb-genio-bridge` recipe and deployed
+side by side — pick the one that matches the `torizoncore-builder` you have:
 
-Host prerequisites
+* **`tcb-genio-bridge`** — a wrapper that drives a **stock** `torizoncore-builder`
+  end to end (unsparse, build, re-sparse, repack). This is the delivery model
+  in production use today: deployed as loose files
+  (`deploy/images/lec-mtk-i1200-ufs/tcb-genio-bridge/`), published to the
+  customer alongside the image. Uses `tcbuild-genio.yaml` built from
+  `tcbuild-genio-wrapper.yaml`.
+* **`genio2img`/`img2genio`** — standalone converters bracketing a **released**
+  `torizoncore-builder` run that carries `--raw-sector-size` (no Yocto build
+  needed in between). This is the upstream delivery model, once such a release
+  exists — no released `torizoncore-builder` carries `--raw-sector-size` today,
+  so this path is built but **not published** in this delivery. Deployed as a
+  single `tcb-genio-bridge.tar` archive. Uses `tcbuild-genio.yaml` built from
+  `tcbuild-genio-converters.yaml`.
+
+Rootfs-level customizations (filesystem overlays, preloaded containers) are
+supported by both paths; device-tree, kernel-argument, U-Boot-env, and splash
+edits are not (TCB rejects them on raw/WIC images either way).
+
+Using the wrapper (published path)
 ------
-`simg2img`/`img2simg` (`android-sdk-libsparse-utils`) for `genio2img`/
-`img2genio` themselves, and a `torizoncore-builder` release with
-`--raw-sector-size` support to customize between them — either its
-`torizon/torizoncore-builder` container image, or a native install.
 
-Customization classes
-------
-`torizoncore-builder`, run against `genio2img`'s staged `input.wic`, delivers
-rootfs-level content into the OSTree rootfs:
+### Host prerequisites
+Docker and `simg2img`/`img2simg` (`android-sdk-libsparse-utils`). The wrapper
+runs TCB from its `torizon/torizoncore-builder` container image, pulled on
+first run — no separate `torizoncore-builder` install.
 
-* File and directory overlays — a `changes/` tree staged by `genio2img -c`
-  (default `./changes`), applied per `tcbuild-genio.yaml`'s
+### Customization classes
+The wrapper delivers rootfs-level content into the OSTree rootfs:
+
+* File and directory overlays — one `changes/` tree, or several supplied with
+  repeatable `-c`, applied in the order listed in `tcbuild-genio.yaml`'s
   `customization.filesystem`. Config files go under `usr/etc/` (the OSTree
   factory-config location), not a top-level `etc/` — a committed `/etc`
-  collides with the base `/usr/etc` and `torizoncore-builder` aborts the
-  deploy.
+  collides with the base `/usr/etc` and the wrapper aborts the deploy.
 * Yocto packages delivered as installed files (e.g. `usr/bin/`, `usr/lib/`),
   through the same overlay mechanism.
 * Prebuilt kernel modules dropped in as `.ko` files. A drop-in is not
   `depmod`-indexed, so load it on the target with `insmod` of its full path,
   not `modprobe`.
-* Preloaded containers, from a `docker-compose` bundle staged by
-  `genio2img -b` (default `./docker-compose.yml`; see below).
-
-Run-time value and registry-credential substitution is a plain
-`torizoncore-builder --set VAR=<value>` argument on the invocation in step 2
-below — there is no wrapper to keep the value off the command line, so it is
-visible in host `ps` output and (for the container invocation) in
-`docker inspect` of the running `torizoncore-builder` container for the run's
-duration.
+* Preloaded containers, from a `docker-compose` bundle (see below).
+* Run-time value and registry-credential substitution, so secrets are not
+  committed to `tcbuild-genio.yaml` (see `-e` below).
 
 Not supported: `torizoncore-builder` rejects these customisation classes
 outright when the target is a raw/WIC image — which the Genio system image
-is:
+is — regardless of the wrapper:
 
 * Kernel module build (the DKMS / in-tree-build route — as opposed to the
   prebuilt `.ko` drop-in above, which is supported)
@@ -206,8 +210,134 @@ A kernel-level change instead needs a BSP rebuild and reflash: an in-tree
 driver is enabled as a kernel module on request, and an out-of-tree driver is
 delivered as a Yocto recipe.
 
-Command-line reference
+### Command-line reference
+Kept in sync with `tcb-genio-bridge -h`; update both together when a flag
+changes.
+
+```
+$ ./tcb-genio-bridge [-o OUTPUT_TAR] [-f TCBUILD_YAML] [-c CHANGES_DIR]... \
+      [-b COMPOSE_FILE] [-e VAR]... INPUT_TAR [-- TCB_BUILD_ARG...]
+```
+
+* `INPUT_TAR` — the `aiotflash.tar` produced by the Yocto build.
+* `-o OUTPUT_TAR` — repacked tarball (default: `<INPUT_TAR without .tar>-custom.tar`).
+* `-f TCBUILD_YAML` — the tcbuild config to use (default: `tcbuild-genio.yaml`
+  beside the script).
+* `-c CHANGES_DIR` — a directory of files to overlay onto the rootfs.
+  Repeatable; each is staged under its own basename and applied in the order
+  `customization.filesystem` lists it in `tcbuild-genio.yaml` (default:
+  `./changes` if present). The basename must be letters, digits, `.`, `_` or
+  `-`, and must not begin with `-`. A directory staged here but left out of
+  `customization.filesystem` is silently not applied — no error, nothing
+  overlaid.
+* `-b COMPOSE_FILE` — the `docker-compose` file for a container-preload bundle
+  (default: `./docker-compose.yml` if present). Its basename must match the
+  tcbuild config's `bundle.compose-file`.
+* `-e VAR` — forward `VAR`'s value from the build-host environment to the
+  config's `${VAR}` substitution, as `--set VAR=<value>`. Repeatable. `VAR`
+  must be exported (a plain shell assignment is not enough — an unexported
+  `VAR` is a hard error); an exported-but-empty `VAR` still forwards an empty
+  value. Keeps a secret (e.g. a private-registry password) out of the shell
+  command line, history, terminal scrollback, and CI logs — but not out of
+  the process argument list, which is visible in host `ps` output and in
+  `docker inspect` of the tcb container for the run's duration.
+* `-- TCB_BUILD_ARG...` — everything after `--` is appended to the
+  `torizoncore-builder` build invocation unchanged, e.g.
+  `-- --set PASSWORD=secret`. Any of its options can be forwarded this way,
+  not only `--set`.
+
+Environment variables:
+
+* `TMPDIR` — working directory for the wrapper's intermediate files (see
+  "Host free space" below).
+* `TCB_GENIO_SKIP_PREFLIGHT=1` — skip the Docker-mount and free-space
+  preflight checks.
+* `TCB_IMAGE` — override the `torizoncore-builder` container image tag
+  (default: `torizon/torizoncore-builder:3`).
+
+### Performing image customization
+Prepare your customization — a `changes/` overlay, a container bundle, or both
+(see Customization classes above).
+
+Deploy the wrapper and collect it beside the image:
+```
+$$ bitbake tcb-genio-bridge
+$ cd ~/yocto-workdir/build-lec-mtk-i1200/deploy/images/lec-mtk-i1200-ufs/
+$ cp tcb-genio-bridge/tcb-genio-bridge tcb-genio-bridge/tcbuild-genio.yaml .
+```
+
+Run the wrapper against the tarball (see Command-line reference above for the
+full flag list):
+```
+$ ./tcb-genio-bridge -o custom.tar torizon-docker-lec-mtk-i1200-ufs.aiotflash.tar
+```
+For a preloaded container, uncomment the `bundle:` block in `tcbuild-genio.yaml`
+and set `platform: linux/arm64`; the wrapper auto-detects `./docker-compose.yml`.
+
+Flash the customized tarball and boot:
+```
+$ tar xf custom.tar
+$ cd torizon-docker-lec-mtk-i1200-ufs-*/
+$ genio-flash system
+```
+
+The wrapper rewrites the rootfs partition in place, so the customization must
+fit its free space (about 0.8 GB on the default image). A preloaded container
+bundle larger than that is handled by growing the output image, so it is not a
+limit on the bundle — but the grow makes the run's disk appetite scale with
+the bundle.
+
+### Host free space
+
+The wrapper holds the unpacked tarball, the unsparsed input image, the grown
+output image, the re-sparsed image and the output tarball at the same time, in
+the directory it runs from. Budget
+
+    10 x <tarball> + 2 x <unpacked bundle>
+
+on that filesystem. Without a bundle that is the familiar ten-times-the-tarball
+figure; with one the bundle term dominates. A 0.70 GiB tarball with an 8.13 GiB
+bundle peaked at 18.9 GiB in measurement — against the 7.0 GiB the tarball alone
+would suggest — for which this rule budgets 23.2 GiB.
+
+To work on a different disk, set `TMPDIR` to a directory there — it must be one
+the Docker daemon can also reach, so with snap-installed Docker keep it under
+your home:
+
+    $ TMPDIR=~/big-disk/scratch ./tcb-genio-bridge -o custom.tar <image>.aiotflash.tar
+
+The container images themselves are fetched into Docker's own storage, which is
+usually on a different filesystem (`docker info` reports `Docker Root Dir`);
+allow for the bundle there as well.
+
+Using the converters (upstream path — built, not published)
 ------
+This path requires a **released** `torizoncore-builder` carrying
+`--raw-sector-size`; no such release exists yet, so it is not part of the
+delivered tooling — kept here for the upstream delivery model this recipe
+also builds for.
+
+### Host prerequisites
+`simg2img`/`img2simg` (`android-sdk-libsparse-utils`) for `genio2img`/
+`img2genio` themselves, and a `torizoncore-builder` release with
+`--raw-sector-size` support to customize between them — either its
+`torizon/torizoncore-builder` container image, or a native install.
+
+### Customization classes
+`torizoncore-builder`, run against `genio2img`'s staged `input.wic`, delivers
+the same rootfs-level content classes as the wrapper above (file/directory
+overlays staged by `genio2img -c`, installed Yocto packages, prebuilt `.ko`
+drop-ins, and preloaded containers staged by `genio2img -b`), and rejects the
+same unsupported classes (kernel module build, kernel-argument changes,
+device-tree overlays, U-Boot-env edits, secure-boot signing) with the same
+verbatim error. Run-time value and registry-credential substitution is a
+plain `torizoncore-builder --set VAR=<value>` argument on the invocation
+below — there is no wrapper to keep the value off the command line, so it is
+visible in host `ps` output and (for the container invocation) in
+`docker inspect` of the running `torizoncore-builder` container for the run's
+duration.
+
+### Command-line reference
 Kept in sync with `genio2img -h`/`img2genio -h`; update both together when a
 flag changes.
 
@@ -235,8 +365,7 @@ $ ./img2genio [-o OUTPUT_TAR] WORKDIR
   `output.raw-image.local`, run from `WORKDIR`).
 * `-o OUTPUT_TAR` — repacked tarball (default: `WORKDIR-custom.tar`).
 
-Performing image customization
-------
+### Performing image customization
 Prepare your customization — a `changes/` overlay, a container bundle, or both
 (see Customization classes above).
 
@@ -283,8 +412,7 @@ by `torizoncore-builder` growing the output image itself, so it is not a
 limit on the bundle — but the grow makes the run's disk appetite scale with
 the bundle.
 
-Host free space
-------
+### Host free space
 
 Each `genio2img` `WORKDIR` holds the unpacked tarball, the unsparsed input
 image, `torizoncore-builder`'s output image, the re-sparsed image and
