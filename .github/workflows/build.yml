@@ -1,0 +1,97 @@
+name: build
+
+# Torizon OS image build for the NXP i.MX6SoloX SABRE-SD, driven by /ticket_ci.
+# Dispatched per ticket branch; builds on the self-hosted fra2 runner in a
+# dedicated CI tree against the shared warm sstate cache.
+#
+# workflow_dispatch only — never pull_request — so fork-PR code cannot execute
+# on the self-hosted runner (public-fork safety).
+on:
+  workflow_dispatch:
+
+# One build at a time on the shared CI tree (the single runner already
+# serialises, but make the intent explicit and cancel superseded runs).
+concurrency:
+  group: fra2-imx6sx-ci
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: [self-hosted, fra2]
+    timeout-minutes: 240
+    steps:
+      - name: Build torizon-docker (imx6sxsabresd)
+        shell: bash
+        run: |
+          set -uo pipefail
+          TREE=/mnt/volume_fra1_01/torizon/imx6sx-ci
+          LAYER="$TREE/layers/meta-toradex-torizon"
+          MACHINE=imx6sxsabresd
+          BUILDDIR=build-imx6sxsabresd
+          DEPLOY="$TREE/$BUILDDIR/deploy/images/$MACHINE"
+          REF="$GITHUB_REF_NAME"
+          BBLOG=$(mktemp)
+
+          # The CI tree is shared with the build account and owned by it, so
+          # git's ownership check refuses the layer under the runner's account.
+          # Only system and global scope are honoured for this key — `-c` and
+          # the GIT_CONFIG_* environment are ignored for it by design.
+          git config --global --get-all safe.directory | grep -qxF "$LAYER" \
+            || git config --global --add safe.directory "$LAYER"
+
+          echo "::group::Checkout $REF in the CI-tree fork layer"
+          git -C "$LAYER" fetch emcraft --prune || exit 1
+          git -C "$LAYER" fetch emcraft "$REF" || { echo "error: ref '$REF' not found on the emcraft remote"; exit 1; }
+          git -C "$LAYER" checkout -f FETCH_HEAD || exit 1
+          git -C "$LAYER" log --oneline -1
+          echo "::endgroup::"
+
+          echo "::group::bitbake torizon-docker"
+          # Clean the image recipe before building. The persistent CI tree
+          # reuses torizon-docker's workdir across dispatches, so its pseudo
+          # database accumulates stale inode->path entries; when a freed inode
+          # is later reused by an rpm temp file during do_rootfs, pseudo aborts
+          # the client (dnf dies with SIGABRT). A fresh workdir per run gives
+          # do_rootfs a clean pseudo db. Deps stay warm in the shared sstate.
+          #
+          # No EULA=1 here, unlike the MediaTek build: meta-freescale defaults to
+          # IMX_DEFAULT_BSP = "mainline", so nothing EULA-licensed is fetched.
+          /home/CACHE/bin/torizon-crops-ci "$TREE" \
+            "MACHINE=$MACHINE source setup-environment $BUILDDIR && bitbake -c clean torizon-docker && bitbake torizon-docker" \
+            2>&1 | tee "$BBLOG"
+          rc=${PIPESTATUS[0]}
+          echo "::endgroup::"
+
+          if [ "$rc" -ne 0 ]; then
+            # Emit a normalised 'error:' line, then tail the failing task log(s)
+            # so ci-poll.sh's excerpt carries the actual compiler / task error.
+            # bitbake announces each failing task's log as
+            # "Logfile of failure stored in: <container-path>"; map /workdir back
+            # to the host tree so tail can read it.
+            echo "error: bitbake torizon-docker failed (rc=$rc) for ref $REF"
+            sed -n 's/.*Logfile of failure stored in: \(\/[^ ]*\).*/\1/p' "$BBLOG" | sort -u | while read -r lg; do
+              hostlg=${lg/\/workdir/$TREE}
+              echo "----- ${hostlg} -----"
+              tail -40 "$hostlg" 2>/dev/null
+            done
+            exit "$rc"
+          fi
+
+          echo "::group::Built images"
+          # Success manifest for the dispatcher: one marker line per output
+          # image. Build the marker delimiters from variables on separate lines
+          # so this script's own text (which GitHub echoes into the run log)
+          # does not itself match the dispatcher's marker grep.
+          L='>>>'
+          R='<<<'
+          shopt -s nullglob
+          for f in "$DEPLOY"/*; do
+            [ -f "$f" ] || continue
+            [ -L "$f" ] && continue
+            case "$(basename "$f")" in
+              *.json|*.manifest|*.spdx.tar.zst|*.env|*.its|*.ld|*-abiversion \
+              |*.raw|*.raw-*|fw_env.config*|u-boot-initial-env*|u-boot-version*|boot.scr*) continue ;;
+            esac
+            printf '%s %s %s %s\n' "$L" "$(basename "$f")" "$(du -h "$f" | cut -f1)" "$R"
+          done
+          echo "::endgroup::"
