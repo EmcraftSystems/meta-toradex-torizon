@@ -28,14 +28,9 @@ IMAGE_FSTYPES:append = " wic"
 # Torizon's boot script, and -- through ostree's bbappend, which keys off whether
 # this variable is set at all -- the ostree-uboot-env package in the rootfs.
 #
-# INERT AS DELIVERED, deliberately. Nothing in the U-Boot this machine builds can
-# consume either artefact yet: there is no distro_bootcmd and no scriptaddr /
-# kernel_addr_r / fdt_addr_r in its environment, and the stock bootcmd looks for
-# a boot script with fatload on a FAT partition this layout does not create. Both
-# halves -- CONFIG_DISTRO_DEFAULTS and the load addresses in UENV_EXTRA_CONFIGS,
-# as imx93frdm.inc and imx95-19x19-verdin.inc set them -- belong with the kernel
-# bring-up that first needs to boot something. Set here so the package lands and
-# the machine file is not reopened for it later.
+# The bootloader side that reads them is a config fragment on u-boot-fslc, not
+# anything here: this board's environment lives in a C header the build cannot
+# reach, so the boot command carries its own load addresses.
 PREFERRED_PROVIDER_u-boot-default-script = "u-boot-distro-boot"
 
 # Kernel command line. Two traps here, and the i.MX8/9 machines in this directory
