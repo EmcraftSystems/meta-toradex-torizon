@@ -5,5 +5,11 @@
 # The bootloader offset is 1 KiB on i.MX 6, not the 32 KiB the i.MX 8/9 boards
 # use: see meta-freescale's own imx-uboot-bootpart.wks.in, which is the i.MX6/7
 # default and aligns the same rawcopy at 1.
+#
+# The gap before the payload is not slack. U-Boot's saved environment lives raw
+# on this same device at CONFIG_ENV_OFFSET=0xE0000 (896 KiB) for
+# CONFIG_ENV_SIZE=0x2000, which sits between the two partitions below. So the
+# bootloader's budget is 895 KiB, and a bootloader grown past that would be
+# overwritten by the first `env save` with no warning. Today's is 535 KiB.
 part u-boot --source rawcopy --sourceparams="file=u-boot.imx.tagged" --ondisk mmcblk --no-table --align 1
 part / --source otaimage --ondisk mmcblk --fstype=ext4 --align 8192
