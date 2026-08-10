@@ -1,0 +1,9 @@
+# short-description: Create OTA-enabled SD card image for i.MX6SoloX SABRE-SD
+# long-description: Creates an SD card image with the U-Boot binary at the 1 KiB
+# offset the i.MX 6 boot ROM reads, and an OSTree physical sysroot as the payload.
+#
+# The bootloader offset is 1 KiB on i.MX 6, not the 32 KiB the i.MX 8/9 boards
+# use: see meta-freescale's own imx-uboot-bootpart.wks.in, which is the i.MX6/7
+# default and aligns the same rawcopy at 1.
+part u-boot --source rawcopy --sourceparams="file=u-boot.imx.tagged" --ondisk mmcblk --no-table --align 1
+part / --source otaimage --ondisk mmcblk --fstype=ext4 --align 8192
