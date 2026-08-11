@@ -166,6 +166,15 @@ edits are not (TCB rejects them on raw/WIC images either way).
 Using the wrapper (published path)
 ------
 
+The customized image keeps the base image's `/var` state, so it provisions on
+the Torizon Cloud exactly as the stock image does. `torizoncore-builder`
+itself restores only the home directories when it builds the new OSTree
+deployment, which drops `/var/sota` — the update client's storage, and where
+the cloud provisioning procedure writes `auto-provisioning.json` — so the
+wrapper carries that state across. The base image's installed-versions record
+is deliberately not carried: it names the base commit, and the customized
+image boots a different one.
+
 ### Host prerequisites
 Docker and `simg2img`/`img2simg` (`android-sdk-libsparse-utils`). The wrapper
 runs TCB from its `torizon/torizoncore-builder` container image, pulled on
@@ -330,7 +339,10 @@ overlays staged by `genio2img -c`, installed Yocto packages, prebuilt `.ko`
 drop-ins, and preloaded containers staged by `genio2img -b`), and rejects the
 same unsupported classes (kernel module build, kernel-argument changes,
 device-tree overlays, U-Boot-env edits, secure-boot signing) with the same
-verbatim error. Run-time value and registry-credential substitution is a
+verbatim error. It does **not** carry the base image's `/var` state across
+(see "Using the wrapper" above) — that is wrapper-specific logic; a
+customized image produced this way provisions on the Torizon Cloud as a
+device with no prior `/var/sota` state. Run-time value and registry-credential substitution is a
 plain `torizoncore-builder --set VAR=<value>` argument on the invocation
 below — there is no wrapper to keep the value off the command line, so it is
 visible in host `ps` output and (for the container invocation) in
@@ -374,7 +386,7 @@ Deploy the tools and collect them beside the image:
 $$ bitbake tcb-genio-bridge
 $ cd ~/yocto-workdir/build-lec-mtk-i1200/deploy/images/lec-mtk-i1200-ufs/
 $ tar xf tcb-genio-bridge.tar
-$ cp tcb-genio-bridge/genio2img tcb-genio-bridge/img2genio tcb-genio-bridge/tcbuild-genio.yaml .
+$ cp tcb-genio-bridge-converters/genio2img tcb-genio-bridge-converters/img2genio tcb-genio-bridge-converters/tcbuild-genio.yaml .
 ```
 
 1. **Convert** the tarball to a raw WIC and stage a customization run:

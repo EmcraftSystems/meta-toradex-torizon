@@ -37,17 +37,20 @@ do_compile[noexec] = "1"
 # artifacts (built for the upstream path, not published in this delivery
 # model). Neither goes into the rootfs.
 BRIDGE_DEPLOY = "${DEPLOYDIR}/${BPN}"
-CONVERTERS_DEPLOY = "${WORKDIR}/deploy-stage/${BPN}"
+# Named ${BPN}-converters, not ${BPN}: this basename is also the archive's
+# sole top-level member, and it lands beside BRIDGE_DEPLOY under
+# DEPLOY_DIR_IMAGE — reusing ${BPN} there would make `tar xf` merge into
+# BRIDGE_DEPLOY and clobber its tcbuild-genio.yaml with the converters'.
+CONVERTERS_DEPLOY = "${WORKDIR}/deploy-stage/${BPN}-converters"
 
 do_deploy() {
-    install -d ${BRIDGE_DEPLOY}
     install -m 0755 ${S}/tcb-genio-bridge ${BRIDGE_DEPLOY}/tcb-genio-bridge
     install -m 0644 ${S}/tcbuild-genio-wrapper.yaml ${BRIDGE_DEPLOY}/tcbuild-genio.yaml
 
     install -m 0755 ${S}/genio2img ${CONVERTERS_DEPLOY}/genio2img
     install -m 0755 ${S}/img2genio ${CONVERTERS_DEPLOY}/img2genio
     install -m 0644 ${S}/tcbuild-genio-converters.yaml ${CONVERTERS_DEPLOY}/tcbuild-genio.yaml
-    tar --numeric-owner -cf ${DEPLOYDIR}/${BPN}.tar -C ${CONVERTERS_DEPLOY}/.. ${BPN}
+    tar --numeric-owner -cf ${DEPLOYDIR}/${BPN}.tar -C ${CONVERTERS_DEPLOY}/.. ${BPN}-converters
 }
 do_deploy[dirs] += "${BRIDGE_DEPLOY} ${CONVERTERS_DEPLOY}"
 do_deploy[cleandirs] += "${CONVERTERS_DEPLOY}"
