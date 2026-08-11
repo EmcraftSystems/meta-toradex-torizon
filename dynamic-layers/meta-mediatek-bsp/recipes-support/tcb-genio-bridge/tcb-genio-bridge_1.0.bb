@@ -37,10 +37,8 @@ do_compile[noexec] = "1"
 # artifacts (built for the upstream path, not published in this delivery
 # model). Neither goes into the rootfs.
 BRIDGE_DEPLOY = "${DEPLOYDIR}/${BPN}"
-# Named ${BPN}-converters, not ${BPN}: this basename is also the archive's
-# sole top-level member, and it lands beside BRIDGE_DEPLOY under
-# DEPLOY_DIR_IMAGE — reusing ${BPN} there would make `tar xf` merge into
-# BRIDGE_DEPLOY and clobber its tcbuild-genio.yaml with the converters'.
+# ${BPN}-converters, not ${BPN}: also the archive's top-level member name,
+# and reusing ${BPN} would let `tar xf` merge into and clobber BRIDGE_DEPLOY.
 CONVERTERS_DEPLOY = "${WORKDIR}/deploy-stage/${BPN}-converters"
 
 do_deploy() {
