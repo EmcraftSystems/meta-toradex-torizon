@@ -32,10 +32,8 @@ inherit deploy
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"
 
-# Host-side tools: the wrapper deploys as loose files (published to the
-# customer as-is); the converters deploy as one archive beside the flashing
-# artifacts (built for the upstream path, not published in this delivery
-# model). Neither goes into the rootfs.
+# Host-side tools, neither in the rootfs: the wrapper deploys as loose
+# files (published); the converters as one archive (built, not published).
 BRIDGE_DEPLOY = "${DEPLOYDIR}/${BPN}"
 # ${BPN}-converters, not ${BPN}: also the archive's top-level member name,
 # and reusing ${BPN} would let `tar xf` merge into and clobber BRIDGE_DEPLOY.
