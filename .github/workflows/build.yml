@@ -54,8 +54,9 @@ jobs:
           # the client (dnf dies with SIGABRT). A fresh workdir per run gives
           # do_rootfs a clean pseudo db. Deps stay warm in the shared sstate.
           #
-          # No EULA=1 here, unlike the MediaTek build: meta-freescale defaults to
-          # IMX_DEFAULT_BSP = "mainline", so nothing EULA-licensed is fetched.
+          # No EULA=1 here, unlike the MediaTek build. Torizon's own distro sets
+          # IMX_DEFAULT_BSP = "nxp", but linux-fslc-imx fetches Freescale/linux-fslc
+          # from GitHub, not the EULA-gated meta-imx tree, so nothing is gated.
           /home/CACHE/bin/torizon-crops-ci "$TREE" \
             "MACHINE=$MACHINE source setup-environment $BUILDDIR && bitbake -c clean torizon-docker && bitbake torizon-docker" \
             2>&1 | tee "$BBLOG"

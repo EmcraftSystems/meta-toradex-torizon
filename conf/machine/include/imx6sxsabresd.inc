@@ -1,6 +1,8 @@
 # NXP i.MX6SoloX SABRE-SD — Torizon machine glue.
 #
-# The machine itself comes from meta-freescale, on its mainline BSP default.
+# The machine itself comes from meta-freescale. The BSP is NXP's, not
+# meta-freescale's mainline default: base-distro.inc sets IMX_DEFAULT_BSP =
+# "nxp", so the kernel is linux-fslc-imx on imx_v7_defconfig.
 # This file carries only what Torizon needs on top, and is pulled in by
 # conf/template/local.conf's `include conf/machine/include/${MACHINE}.inc`.
 
