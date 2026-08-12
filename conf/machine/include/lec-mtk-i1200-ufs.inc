@@ -25,6 +25,7 @@ IMAGE_INSTALL:append = " rtw88"
 # the name must be fixed to the SMARC socket, identical on every unit.
 IMAGE_INSTALL:append = " usb-wifi-naming"
 
-# Build and deploy host-side genio2img/img2genio torizoncore-builder
-# converters alongside the image.
+# Build and deploy the host-side tcb-genio-bridge wrapper (published) and
+# the genio2img/img2genio torizoncore-builder converters (built, not
+# published) alongside the image.
 EXTRA_IMAGEDEPENDS:append = " tcb-genio-bridge"
