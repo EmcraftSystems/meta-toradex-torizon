@@ -55,8 +55,9 @@ jobs:
           # do_rootfs a clean pseudo db. Deps stay warm in the shared sstate.
           #
           # No EULA=1 here, unlike the MediaTek build. Torizon's own distro sets
-          # IMX_DEFAULT_BSP = "nxp", but linux-fslc-imx fetches Freescale/linux-fslc
-          # from GitHub, not the EULA-gated meta-imx tree, so nothing is gated.
+          # IMX_DEFAULT_BSP = "nxp", so this is the NXP BSP -- but no meta-imx layer
+          # is in BBLAYERS, so nothing EULA-gated is reachable to begin with. Adding
+          # that layer would change this.
           /home/CACHE/bin/torizon-crops-ci "$TREE" \
             "MACHINE=$MACHINE source setup-environment $BUILDDIR && bitbake -c clean torizon-docker && bitbake torizon-docker" \
             2>&1 | tee "$BBLOG"
