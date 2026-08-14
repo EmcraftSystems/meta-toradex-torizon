@@ -1,4 +1,10 @@
+require recipes-kernel/linux/linux-torizon.inc
+
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
+
+# torizon.cfg sets KERNEL_LZ4=y, and the arm32 self-decompressor then shells out
+# to a host lz4 that nothing else in the kernel build supplies.
+DEPENDS += "lz4-native"
 
 # meta-virtualization's linux-%.bbappend supplies the container kernel features
 # only for recipes carrying kmeta metadata: for any other kernel it computes
