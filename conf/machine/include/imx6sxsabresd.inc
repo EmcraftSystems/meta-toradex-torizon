@@ -51,3 +51,7 @@ PREFERRED_PROVIDER_u-boot-default-script = "u-boot-distro-boot"
 # `:append:sota` is the preserving form, and the shape sl1680.inc/sl2619.inc use.
 # The console is UART1 per the machine's own SERIAL_CONSOLES.
 OSTREE_KERNEL_ARGS:append:sota = " console=ttymxc0,115200 earlycon root=LABEL=otaroot rootfstype=ext4"
+
+# The FECs enumerate as end0/end1
+NET_NAME:pn-networkmanager = "end"
+NET_NUMS:pn-networkmanager = "0 1"
