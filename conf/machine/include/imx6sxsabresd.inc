@@ -55,3 +55,10 @@ OSTREE_KERNEL_ARGS:append:sota = " console=ttymxc0,115200 earlycon root=LABEL=ot
 # The FECs enumerate as end0/end1
 NET_NAME:pn-networkmanager = "end"
 NET_NUMS:pn-networkmanager = "0 1"
+
+# TSX-8 TEST -- DO NOT MERGE. A later root= wins over an earlier one on the
+# kernel command line, so this makes every boot of THIS build panic at VFS
+# mount ("Unable to mount root fs") -- deliberately, to force three failed
+# boots and exercise the real bootcount/altbootcmd rollback path against a
+# genuinely broken staged update. Revert before this ticket's PR.
+OSTREE_KERNEL_ARGS:append:sota = " root=LABEL=nonexistent-tsx8-test"
