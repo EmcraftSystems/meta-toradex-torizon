@@ -1,0 +1,4 @@
+[uptane]
+enable_offline_updates = true
+enable_online_updates = true
+offline_updates_source = "/media/torizon/update"

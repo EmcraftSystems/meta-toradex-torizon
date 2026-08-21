@@ -24,6 +24,10 @@ PV = "1.0+git${SRCPV}"
 
 DEPENDS = "boost curl openssl libarchive libsodium sqlite3 asn1c-native ostree"
 RDEPENDS:${PN}:class-target = "aktualizr-hwid lshw bash aktualizr-default-sec aktualizr-polling-interval aktualizr-reboot greenboot"
+# The offline-update mount-path convention (torizon volume label) is a
+# project-specific choice, not one every machine sharing this recipe
+# should inherit.
+RDEPENDS:${PN}:append:imx6sxsabresd = " aktualizr-offline-updates"
 
 inherit cmake pkgconfig systemd python3native
 
