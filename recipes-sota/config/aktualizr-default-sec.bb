@@ -19,7 +19,7 @@ SRC_URI:append:imx-generic-bsp = " \
 RDEPENDS:${PN} += "bash coreutils jq util-linux mmc-utils sed u-boot-fw-utils"
 RDEPENDS:${PN}:remove:genericx86-64 = "u-boot-fw-utils"
 RDEPENDS:${PN}:remove:intel-x86-common = "u-boot-fw-utils"
-DEPENDS:imx-generic-bsp = "jq-native"
+DEPENDS = "jq-native"
 
 # Check if bootloader update is supported
 BL_UPDATE_SUPPORT ?= "1"
@@ -31,10 +31,19 @@ do_install:append () {
     install -m 0644 ${WORKDIR}/secondaries.json ${D}${libdir}/sota/secondaries.json
     sed -i "s/@@MACHINE@@/${MACHINE}/g" ${D}${libdir}/sota/secondaries.json
 
+    # Installed once, unconditionally: bl_actions.sh sources it when
+    # BL_UPDATE_SUPPORT=1, fuse_actions.sh (imx-generic-bsp) sources it
+    # regardless. FILES:remove strips it from packaging where truly unwanted.
+    install -d ${D}${bindir}
+    install -m 0644 ${WORKDIR}/common_actions.sh ${D}${bindir}/common_actions.sh
+
     if [ "${BL_UPDATE_SUPPORT}" = "1" ]; then
-        install -d ${D}${bindir}
         install -m 0744 ${WORKDIR}/bl_actions.sh ${D}${bindir}/bl_actions.sh
-        install -m 0644 ${WORKDIR}/common_actions.sh ${D}${bindir}/common_actions.sh
+    else
+        # No handler to act through - don't register an ECU aktualizr cannot reach.
+        jq 'del(.["torizon-generic"][] | select(.ecu_hardware_id == "${MACHINE}-bootloader"))' \
+            ${D}${libdir}/sota/secondaries.json > ${WORKDIR}/secondaries.json.filtered
+        install -m 0644 ${WORKDIR}/secondaries.json.filtered ${D}${libdir}/sota/secondaries.json
     fi
 }
 
