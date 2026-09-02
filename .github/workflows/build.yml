@@ -9,6 +9,10 @@ name: build
 on:
   workflow_dispatch:
 
+# The checkout below authenticates to github.com with the run's own token.
+permissions:
+  contents: read
+
 # One build at a time on the shared CI tree (the single runner already
 # serialises, but make the intent explicit and cancel superseded runs).
 concurrency:
@@ -22,6 +26,8 @@ jobs:
     steps:
       - name: Build torizon-docker (imx6sxsabresd)
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
           TREE=/mnt/volume_fra1_01/torizon/imx6sx-ci
@@ -39,9 +45,19 @@ jobs:
           git config --global --get-all safe.directory | grep -qxF "$LAYER" \
             || git config --global --add safe.directory "$LAYER"
 
+          # GitHub refuses anonymous git-upload-pack from this host's IP: the ref
+          # advertisement still answers 200, but the POST that transfers anything
+          # answers 401 Basic, and the runner account has no credential store --
+          # so an unauthenticated fetch dies prompting for a username on a tty it
+          # does not have. Keep the token in the environment; the single quotes
+          # hold it out of argv, where ps would see it, and git's helper expands
+          # it at run time. A fetch that is served anonymously never calls this.
+          CRED='!f(){ echo username=x-access-token; echo "password=$GH_TOKEN"; };f'
+
           echo "::group::Checkout $REF in the CI-tree fork layer"
-          git -C "$LAYER" fetch emcraft --prune || exit 1
-          git -C "$LAYER" fetch emcraft "$REF" || { echo "error: ref '$REF' not found on the emcraft remote"; exit 1; }
+          git -C "$LAYER" -c credential.helper="$CRED" fetch emcraft --prune || exit 1
+          git -C "$LAYER" -c credential.helper="$CRED" fetch emcraft "$REF" \
+            || { echo "error: ref '$REF' not found on the emcraft remote"; exit 1; }
           git -C "$LAYER" checkout -f FETCH_HEAD || exit 1
           git -C "$LAYER" log --oneline -1
           echo "::endgroup::"
