@@ -8,6 +8,10 @@
 # `include conf/machine/include/${MACHINE}.inc`.
 require common-imx6.inc
 
+# This board meets the shared layout's environment precondition:
+# CONFIG_ENV_OFFSET=0xE0000 (896 KiB) for CONFIG_ENV_SIZE=0x2000 falls in the gap
+# before the payload, so the bootloader's budget is 895 KiB. Today's is 535 KiB.
+
 # The console is UART1 per the machine's own SERIAL_CONSOLES.
 TORIZON_TTY_DEVICE = "ttymxc0,115200"
 
@@ -16,7 +20,3 @@ TORIZON_TTY_DEVICE = "ttymxc0,115200"
 # eMMC, only a microSD card, so it fails cleanly at the extcsd read. Disabled
 # here.
 BL_UPDATE_SUPPORT:imx6sxsabresd = "0"
-
-# The layout file's environment precondition, in this board's numbers:
-# CONFIG_ENV_OFFSET=0xE0000 (896 KiB) for CONFIG_ENV_SIZE=0x2000 falls in the gap
-# before the payload, so the bootloader's budget is 895 KiB. Today's is 535 KiB.

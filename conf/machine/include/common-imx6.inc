@@ -4,6 +4,9 @@
 # machine include requires this file and sets only what differs: its console
 # device, any board-specific kernel argument, and whether its bootloader can be
 # updated in place.
+#
+# The two hooks below are ?= and may be set on either side of the require;
+# everything else is a hard =, so a board overriding one must do it after.
 
 # Family override, so a recipe append reaches the i.MX 6 Torizon machines
 # without naming each one. Same shape as common-am62xx.inc's common-ti.
@@ -44,7 +47,9 @@ OTAROOT_PARTITION_NUMBER = "1"
 # reach, so the boot command carries its own load addresses.
 PREFERRED_PROVIDER_u-boot-default-script = "u-boot-distro-boot"
 
-# The FECs enumerate as end0/end1
+# The FECs enumerate as end0/end1. Two of them is an i.MX6SX/6UL property, not
+# every i.MX 6 part's; on a single-FEC board end1 is a profile for an interface
+# that never appears, which is what networkmanager's own default already does.
 NET_NAME:pn-networkmanager = "end"
 NET_NUMS:pn-networkmanager = "0 1"
 
@@ -65,6 +70,15 @@ NET_NUMS:pn-networkmanager = "0 1"
 # It is written once here so a board contributes its console and its own
 # arguments as values; a second `:append:sota` in a machine file would land
 # after rootfstype= and reintroduce the ordering problem this form avoids.
+#
+# TORIZON_BOARD_KERNEL_ARGS is interpolated directly after `earlycon` and
+# carries its own separator, so a board writes the leading space itself:
+#
+#     TORIZON_BOARD_KERNEL_ARGS = " uart_from_osc"
+#
+# Without it the value fuses onto `earlycon` into one token the kernel drops,
+# taking the early console with it. Empty by default, which keeps the expansion
+# byte-identical for a board that sets nothing.
 TORIZON_TTY_DEVICE ?= "ttymxc0,115200"
 TORIZON_BOARD_KERNEL_ARGS ?= ""
 OSTREE_KERNEL_ARGS:append:sota = " console=${TORIZON_TTY_DEVICE} earlycon${TORIZON_BOARD_KERNEL_ARGS} root=LABEL=otaroot rootfstype=ext4"
