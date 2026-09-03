@@ -1,0 +1,46 @@
+uuu_version 1.4.182
+
+# Write a whole Torizon SD image to the i.MX 6SoloX SABRE-SD through the
+# board itself, over uuu.
+#
+# NOT `uuu -b sd_all`. That built-in ends with `flash bootloader`, a
+# command that exists only in NXP's FSL_FASTBOOT extensions and that
+# this board's mainline U-Boot does not implement. `flash all` (the
+# other command it issues) does work on this board -- its fastboot
+# config names the "all" user-area alias -- but `sd_all` never reaches
+# it: it also sets `mmcdev`/`fastboot_dev` and does `mmc dev ${sd_dev}`,
+# none of which steer where fastboot writes. That is
+# CONFIG_FASTBOOT_FLASH_MMC_DEV, fixed at compile time, and `sd_dev` is
+# not even defined outside NXP's manufacturing environment.
+#
+# So: load U-Boot over the boot ROM's serial-download protocol, then
+# write the whole card in one fastboot transaction. The bootloader needs
+# no separate write because the image already carries it at the 1 KiB
+# offset.
+#
+# THE uuu_version LINE ABOVE IS LOAD-BEARING; do not lower it. Two
+# independent defects make an older uuu fail on this board, and the
+# second is invisible until the first is fixed:
+#
+#   1. uuu's compiled-in fastboot device table gained 1fc9:0152 -- this
+#      board's fastboot gadget -- only on 2021-12-13. An older uuu
+#      matches no device and waits here forever.
+#   2. Before 2021-10-06, uuu's flash command issued `getvar
+#      logical-block-size` unconditionally and aborted when it failed.
+#      U-Boot has never implemented that variable, on any version, so
+#      an older uuu aborts before writing a byte.
+#
+# uuu_1.4.182 is the first release carrying both fixes; declaring it here
+# makes an older uuu refuse with "This version of uuu is too old" instead
+# of hanging or aborting obscurely.
+#
+# Run this whole script against the board with:
+#   uuu imx6sxsabresd.uuu
+# With more than one NXP device attached, pin the target by its USB path
+# (read from `uuu -lsusb` while the board is in the serial downloader --
+# it prints the port chain without dots, e.g. "3:653", not "3:6.5.3"):
+#   uuu -m <bus:port> imx6sxsabresd.uuu
+
+SDP: boot -f u-boot.imx
+FB: flash -raw2sparse all torizon-docker-imx6sxsabresd.wic
+FB: done
