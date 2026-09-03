@@ -22,8 +22,10 @@
 # Build environment setup for NXP i.MX machines carried by the community
 # meta-freescale layer, which the Toradex manifest already syncs into layers/ -
 # no manual clone is needed. Distinct from setup-environment-imx, which drives
-# NXP's own release BSP (meta-imx, imx-setup-release.sh); meta-freescale defaults
-# to IMX_DEFAULT_BSP = "mainline", so no NXP EULA-licensed component is pulled in.
+# NXP's own release BSP (meta-imx, imx-setup-release.sh). Torizon's own distro
+# sets IMX_DEFAULT_BSP = "nxp", so this is the NXP BSP; meta-freescale does carry
+# EULA-gated recipes, but DISTRO_FEATURES has no opengl/wayland/x11, so nothing in
+# torizon-docker depends on one. Enabling graphics would need ACCEPT_FSL_EULA.
 
 _TDX_OEROOT=$(pwd)
 cd "$_TDX_OEROOT"
