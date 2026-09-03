@@ -59,6 +59,34 @@ Flash the Device (FRDM i.MX93 eMMC)
 ======
 Coming Soon
 
+Offline Updates (SABRE-SD i.MX 6SoloX)
+======
+This board supports Torizon's Secure Offline Updates on a USB stick — SD
+is this board's boot medium, so the offline-update medium is USB
+instead.
+
+Offline updates are enabled by a config fragment at
+`/usr/lib/sota/conf.d/`, alongside the existing online-update path,
+which stays enabled: a `[uptane]` block setting
+`enable_offline_updates = true` and
+`offline_updates_source = "/media/torizon/update"`. The device also
+needs its trust keys already provisioned (online or offline — only the
+update step itself has to be air-gapped) before it will act on a
+Lockbox at all.
+
+1. Build the Lockbox on the build host, from the published target's
+   commit — see Toradex's own
+   ["How to Use Secure Offline Updates with Torizon OS"](https://developer.toradex.com/torizon/torizon-platform/torizon-updates/how-to-use-secure-offline-updates-with-torizoncore/)
+   for the general `torizoncore-builder platform lockbox` flow.
+2. Copy the Lockbox onto a USB stick.
+3. With the board already running and its update client already
+   started, insert the stick. The client only detects media inserted
+   after it starts — one present at boot is ignored.
+4. `aktualizr-torizon` installs the update from the stick with no
+   Cloud contact: deployment, reboot, resume, completion, the same
+   rollback safety net described in "OTA Updates and Rollback" above
+   covers a bad offline update too.
+
 Manual Setup
 ======
 1. Create the project folder:
