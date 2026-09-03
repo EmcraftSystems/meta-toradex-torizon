@@ -1,0 +1,19 @@
+# short-description: Create OTA-enabled SD card image for i.MX 6 boards
+# long-description: Creates an SD card image with the U-Boot binary at the 1 KiB
+# offset the i.MX 6 boot ROM reads, and an OSTree physical sysroot as the payload.
+#
+# The bootloader offset is 1 KiB on i.MX 6, not the 32 KiB the i.MX 8/9 boards
+# use: see meta-freescale's own imx-uboot-bootpart.wks.in, which is the i.MX6/7
+# default and aligns the same rawcopy at 1.
+#
+# Two preconditions on a machine that uses this layout, and a board that meets
+# neither overrides WKS_FILE:sota instead:
+#
+#   - The gap before the payload is not slack. U-Boot's saved environment lives
+#     raw on this same device and must fall inside that gap, with the bootloader
+#     fitting underneath it -- a bootloader grown past that is overwritten by the
+#     first `env save` with no warning.
+#   - u-boot.imx.tagged is the non-SPL i.MX 6 bootloader artefact. A board whose
+#     DDR is brought up in SPL produces u-boot-with-spl.imx instead.
+part u-boot --source rawcopy --sourceparams="file=u-boot.imx.tagged" --ondisk mmcblk --no-table --align 1
+part / --source otaimage --ondisk mmcblk --fstype=ext4 --align 8192
