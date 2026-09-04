@@ -137,8 +137,7 @@ the features Torizon OS provides:
   Torizon device.
 
 See "OTA Updates and Rollback (SABRE-SD i.MX 6SoloX)" below for
-updating this board over the air; a section on offline updates from
-removable media is coming soon.
+updating this board over the air.
 
 OTA Updates and Rollback (SABRE-SD i.MX 6SoloX)
 ======
