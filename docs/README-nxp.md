@@ -136,8 +136,9 @@ the features Torizon OS provides:
   multi-architecture image and runs it exactly as documented for any
   Torizon device.
 
-See "OTA Updates and Rollback" below for updating this board over the
-air; a section on offline updates from removable media is coming soon.
+See "OTA Updates and Rollback (SABRE-SD i.MX 6SoloX)" below for
+updating this board over the air; a section on offline updates from
+removable media is coming soon.
 
 OTA Updates and Rollback (SABRE-SD i.MX 6SoloX)
 ======
@@ -149,7 +150,7 @@ provisioned device, and `aktualizr-torizon` downloads and deploys it via
 Provisioning
 ------
 Provisioning is the standard Cloud-issued one-line device command (see
-the Torizon Cloud documentation). This board additionally carries the
+the Torizon Cloud documentation). Torizon OS also ships the
 `auto-provisioning` systemd service as a second route — useful where
 the one-line command's short validity window is impractical, such as
 repeated bench testing:
@@ -164,7 +165,7 @@ $ sudo systemctl start auto-provisioning.service
 ```
 3. Confirm it registered:
 ```bash
-$ sudo journalctl -u auto-provisioning.service | grep -i provisioned
+$ sudo journalctl -u auto-provisioning.service | grep 'Device successfully provisioned'
 Device successfully provisioned
 ```
 It will not re-provision a device that already has one
