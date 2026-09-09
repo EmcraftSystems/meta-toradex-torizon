@@ -2,6 +2,16 @@ FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 
 SRC_URI:append:common-imx6 = " file://torizon-imx6-usb-gadget.cfg"
 
+# mx6sx-generic-bsp, not a bare "mx6sx": meta-freescale emits only the
+# -generic-bsp and -nxp-bsp forms, and an append on an override that does not
+# exist is silently no work. Both i.MX 6SoloX machines build from the SABRE-SD
+# board, so the .env goes in that board's directory to be found.
+SRC_URI:append:mx6sx-generic-bsp = " file://torizon-imx6sx.env file://torizon-imx6sx-env.cfg"
+
+do_configure:prepend:mx6sx-generic-bsp() {
+    install -m 0644 ${WORKDIR}/torizon-imx6sx.env ${S}/board/freescale/mx6sxsabresd/torizon-imx6sx.env
+}
+
 SRC_URI:append:imx6sxsabresd = " file://imx6sxsabresd-fastboot.cfg"
 SRC_URI:append:imx6sxsabresd = " file://imx6sxsabresd-torizon-boot.cfg"
 
