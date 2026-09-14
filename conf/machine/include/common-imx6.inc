@@ -73,17 +73,32 @@ NET_NUMS:pn-networkmanager = "0 1"
 #
 # `:append:sota` is the preserving form, and the shape sl1680.inc/sl2619.inc use.
 # It is written once here so a board contributes its console and its own
-# arguments as values; a second `:append:sota` in a machine file would land
-# after rootfstype= and reintroduce the ordering problem this form avoids.
+# arguments as values rather than appending a second time.
 #
-# TORIZON_BOARD_KERNEL_ARGS is interpolated directly after `earlycon` and
-# carries its own separator, so a board writes the leading space itself:
+# root= and rootfstype= are deliberately absent, unlike the peer machine
+# includes: u-boot-distro-boot's uEnv.txt already sets both ahead of the ostree
+# arguments, so a copy here only repeats them on the command line.
+#
+# Two hooks are interpolated after `earlycon`, and each carries its own
+# separator, so whoever sets one writes the leading space itself:
 #
 #     TORIZON_BOARD_KERNEL_ARGS = " uart_from_osc"
 #
 # Without it the value fuses onto `earlycon` into one token the kernel drops,
-# taking the early console with it. Empty by default, which keeps the expansion
-# byte-identical for a board that sets nothing.
+# taking the early console with it. Both are empty by default, which keeps the
+# expansion byte-identical for a board that sets nothing.
+#
+# They are separate variables because an override-qualified assignment REPLACES
+# the base whenever its override is active - `?=` only tests whether that
+# variant is itself already set, not whether the base is. One variable carrying
+# both a SoC default and a board value would therefore drop the board's value on
+# every machine the SoC override matches, silently and in the direction that
+# looks correct on the one board whose value happens to be identical.
 TORIZON_TTY_DEVICE ?= "ttymxc0,115200"
 TORIZON_BOARD_KERNEL_ARGS ?= ""
-OSTREE_KERNEL_ARGS:append:sota = " console=${TORIZON_TTY_DEVICE} earlycon${TORIZON_BOARD_KERNEL_ARGS} root=LABEL=otaroot rootfstype=ext4"
+TORIZON_SOC_KERNEL_ARGS ?= ""
+
+# clk-imx6sx.c reparents the UART during of_clk_init() without recomputing the
+# divisor, so earlycon output is unreadable until the serial driver probes.
+TORIZON_SOC_KERNEL_ARGS:mx6sx-generic-bsp = " uart_from_osc"
+OSTREE_KERNEL_ARGS:append:sota = " console=${TORIZON_TTY_DEVICE} earlycon${TORIZON_SOC_KERNEL_ARGS}${TORIZON_BOARD_KERNEL_ARGS}"
