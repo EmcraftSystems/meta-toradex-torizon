@@ -50,6 +50,11 @@ PREFERRED_PROVIDER_u-boot-default-script = "u-boot-distro-boot"
 # The FECs enumerate as end0/end1. Two of them is an i.MX6SX/6UL property, not
 # every i.MX 6 part's; on a single-FEC board end1 is a profile for an interface
 # that never appears, which is what networkmanager's own default already does.
+#
+# A machine on NXP's BSP keeps the kernel names instead, because meta-imx masks
+# systemd's renaming policy. That is a property of the BSP rather than of the
+# board, so the override lives in dynamic-layers/meta-imx-bsp and applies itself
+# when that layer is in the build.
 NET_NAME:pn-networkmanager = "end"
 NET_NUMS:pn-networkmanager = "0 1"
 
