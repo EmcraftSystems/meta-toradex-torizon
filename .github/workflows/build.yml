@@ -31,7 +31,7 @@ jobs:
         run: |
           set -uo pipefail
           TREE=/mnt/volume_fra1_01/torizon/imx6sx-ci
-          LAYER="$TREE/layers/meta-toradex-torizon"
+          LAYER="$TREE/sources/meta-toradex-torizon"
           MACHINE=imx6sxsabresd
           BUILDDIR=build-imx6sxsabresd
           DEPLOY="$TREE/$BUILDDIR/deploy/images/$MACHINE"
@@ -70,13 +70,13 @@ jobs:
           # the client (dnf dies with SIGABRT). A fresh workdir per run gives
           # do_rootfs a clean pseudo db. Deps stay warm in the shared sstate.
           #
-          # No EULA=1 here, unlike the MediaTek build. meta-freescale does carry
-          # EULA-gated recipes, and under IMX_DEFAULT_BSP = "nxp" this machine's EGL
-          # and GLES providers resolve to one of them -- but DISTRO_FEATURES has no
-          # opengl/wayland/x11, so nothing in torizon-docker depends on it. Enabling
-          # graphics would need ACCEPT_FSL_EULA.
-          /home/CACHE/bin/torizon-crops-ci "$TREE" \
-            "MACHINE=$MACHINE source setup-environment $BUILDDIR && bitbake -c clean torizon-docker && bitbake torizon-docker" \
+          # EULA=1 is required on this route and is not optional as it was on
+          # meta-freescale: imx-setup-release.sh refuses to configure a build
+          # until NXP's licence is accepted, whatever DISTRO_FEATURES holds.
+          # Accepted for Emcraft by Vladimir Skvortsov, 2026-09-14; the tree's
+          # own conf/local.conf carries ACCEPT_FSL_EULA = "1" as the record.
+          /home/CACHE/bin/torizon-crops-nxp-ci "$TREE" \
+            "EULA=1 MACHINE=$MACHINE source setup-environment $BUILDDIR && bitbake -c clean torizon-docker && bitbake torizon-docker" \
             2>&1 | tee "$BBLOG"
           rc=${PIPESTATUS[0]}
           echo "::endgroup::"

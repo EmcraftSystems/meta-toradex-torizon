@@ -174,8 +174,7 @@ else
             MACHINE="${MACHINE}" DISTRO="common-torizon" . ${_TDX_SCRIPTS_PATH}/setup-environment-ti $@
         ;;
         imx6sxsabresd)
-            # meta-freescale, not NXP's release BSP: mainline kernel, no EULA
-            DISTRO="common-torizon" . ${_TDX_SCRIPTS_PATH}/setup-environment-freescale $@
+            _TDX_DISTRO_SELECT="common-torizon" . ${_TDX_SCRIPTS_PATH}/setup-environment-imx $@
         ;;
         imx95-19x19-verdin)
             # for iMX95, there's only common-torizon as possible DISTRO
