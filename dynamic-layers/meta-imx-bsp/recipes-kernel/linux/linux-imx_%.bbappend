@@ -4,6 +4,6 @@ require recipes-kernel/linux/linux-torizon.inc
 # to the generated .config.
 DELTA_KERNEL_DEFCONFIG:append = "torizon.cfg"
 
-FILESEXTRAPATHS:prepend:mx6-generic-bsp := "${THISDIR}/../../../meta-freescale/recipes-kernel/linux/files:"
+FILESEXTRAPATHS:prepend:mx6-generic-bsp := "${THISDIR}/files:"
 SRC_URI:append:mx6-generic-bsp = " file://torizon-container.cfg"
 DELTA_KERNEL_DEFCONFIG:append:mx6-generic-bsp = " torizon-container.cfg"

@@ -13,7 +13,7 @@ SRC_URI:append:imx93-11x11-lpddr4x-frdm = " \
 "
 
 FILESEXTRAPATHS:prepend:mx6sx-generic-bsp := "${THISDIR}/files/mx6sx:"
-FILESEXTRAPATHS:prepend:imx6sxsabresd := "${THISDIR}/files/imx6sxsabresd:${THISDIR}/../../../meta-freescale/recipes-bsp/u-boot/u-boot-fslc:"
+FILESEXTRAPATHS:prepend:imx6sxsabresd := "${THISDIR}/files/imx6sxsabresd:"
 
 # The core rails are an i.MX 6SoloX fact, so every SoloX machine takes this the
 # moment it builds this recipe, rather than each one rediscovering it.
