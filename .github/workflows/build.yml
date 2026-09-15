@@ -70,11 +70,10 @@ jobs:
           # the client (dnf dies with SIGABRT). A fresh workdir per run gives
           # do_rootfs a clean pseudo db. Deps stay warm in the shared sstate.
           #
-          # EULA=1 is required on this route and is not optional as it was on
-          # meta-freescale: imx-setup-release.sh refuses to configure a build
-          # until NXP's licence is accepted, whatever DISTRO_FEATURES holds.
-          # Accepted for Emcraft by Vladimir Skvortsov, 2026-09-14; the tree's
-          # own conf/local.conf carries ACCEPT_FSL_EULA = "1" as the record.
+          # EULA=1 is not optional here: imx-setup-release.sh refuses to
+          # configure a build until NXP's licence is accepted, whatever
+          # DISTRO_FEATURES holds. The tree's own conf/local.conf carries
+          # ACCEPT_FSL_EULA = "1" as the record of that acceptance.
           /home/CACHE/bin/torizon-crops-nxp-ci "$TREE" \
             "EULA=1 MACHINE=$MACHINE source setup-environment $BUILDDIR && bitbake -c clean torizon-docker && bitbake torizon-docker" \
             2>&1 | tee "$BBLOG"

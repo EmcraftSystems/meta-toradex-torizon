@@ -42,9 +42,9 @@ OTAROOT_PARTITION_NUMBER = "1"
 # Torizon's boot script, and - through ostree's bbappend, which keys off
 # whether this variable is set at all - the ostree-uboot-env package.
 #
-# The bootloader side is a config fragment on u-boot-fslc, not anything here:
-# an i.MX 6 board's environment typically lives in a C header the build cannot
-# reach, so the boot command carries its own load addresses.
+# The bootloader side is a config fragment on the U-Boot recipe, not anything
+# here: an i.MX 6 board's environment typically lives in a C header the build
+# cannot reach, so the boot command carries its own load addresses.
 PREFERRED_PROVIDER_u-boot-default-script = "u-boot-distro-boot"
 
 # The FECs enumerate as end0/end1. Two of them is an i.MX6SX/6UL property, not

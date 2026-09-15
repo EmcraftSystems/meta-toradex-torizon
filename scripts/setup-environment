@@ -84,7 +84,7 @@ _TDX_COMMON_MACHINES=("am62lxx-evm"   "meta-ti-bsp" \
                  "am62pxx-evm"        "meta-ti-bsp" \
                  "am62xx-evm"         "meta-ti-bsp" \
                  "beagley-ai"         "meta-beagle" \
-                 "imx6sxsabresd"      "meta-freescale" \
+                 "imx6sxsabresd"      "meta-imx" \
                  "imx93frdm"          "meta-imx-frdm/meta-imx-bsp" \
                  "imx95-19x19-verdin" "meta-imx" \
                  "intel-corei7-64"    "meta-intel" \
