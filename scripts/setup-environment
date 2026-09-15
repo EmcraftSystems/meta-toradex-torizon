@@ -84,7 +84,7 @@ _TDX_COMMON_MACHINES=("am62lxx-evm"   "meta-ti-bsp" \
                  "am62pxx-evm"        "meta-ti-bsp" \
                  "am62xx-evm"         "meta-ti-bsp" \
                  "beagley-ai"         "meta-beagle" \
-                 "imx6sxsabresd"      "meta-freescale" \
+                 "imx6sxsabresd"      "meta-imx" \
                  "imx93frdm"          "meta-imx-frdm/meta-imx-bsp" \
                  "imx95-19x19-verdin" "meta-imx" \
                  "intel-corei7-64"    "meta-intel" \
@@ -174,8 +174,7 @@ else
             MACHINE="${MACHINE}" DISTRO="common-torizon" . ${_TDX_SCRIPTS_PATH}/setup-environment-ti $@
         ;;
         imx6sxsabresd)
-            # meta-freescale, not NXP's release BSP: mainline kernel, no EULA
-            DISTRO="common-torizon" . ${_TDX_SCRIPTS_PATH}/setup-environment-freescale $@
+            _TDX_DISTRO_SELECT="common-torizon" . ${_TDX_SCRIPTS_PATH}/setup-environment-imx $@
         ;;
         imx95-19x19-verdin)
             # for iMX95, there's only common-torizon as possible DISTRO

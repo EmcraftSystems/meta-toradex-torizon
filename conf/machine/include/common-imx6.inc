@@ -42,14 +42,19 @@ OTAROOT_PARTITION_NUMBER = "1"
 # Torizon's boot script, and - through ostree's bbappend, which keys off
 # whether this variable is set at all - the ostree-uboot-env package.
 #
-# The bootloader side is a config fragment on u-boot-fslc, not anything here:
-# an i.MX 6 board's environment typically lives in a C header the build cannot
-# reach, so the boot command carries its own load addresses.
+# The bootloader side is a config fragment on the U-Boot recipe, not anything
+# here: an i.MX 6 board's environment typically lives in a C header the build
+# cannot reach, so the boot command carries its own load addresses.
 PREFERRED_PROVIDER_u-boot-default-script = "u-boot-distro-boot"
 
 # The FECs enumerate as end0/end1. Two of them is an i.MX6SX/6UL property, not
 # every i.MX 6 part's; on a single-FEC board end1 is a profile for an interface
 # that never appears, which is what networkmanager's own default already does.
+#
+# A machine on NXP's BSP keeps the kernel names instead, because meta-imx masks
+# systemd's renaming policy. That is a property of the BSP rather than of the
+# board, so the override lives in dynamic-layers/meta-imx-bsp and applies itself
+# when that layer is in the build.
 NET_NAME:pn-networkmanager = "end"
 NET_NUMS:pn-networkmanager = "0 1"
 
@@ -68,17 +73,32 @@ NET_NUMS:pn-networkmanager = "0 1"
 #
 # `:append:sota` is the preserving form, and the shape sl1680.inc/sl2619.inc use.
 # It is written once here so a board contributes its console and its own
-# arguments as values; a second `:append:sota` in a machine file would land
-# after rootfstype= and reintroduce the ordering problem this form avoids.
+# arguments as values rather than appending a second time.
 #
-# TORIZON_BOARD_KERNEL_ARGS is interpolated directly after `earlycon` and
-# carries its own separator, so a board writes the leading space itself:
+# root= and rootfstype= are deliberately absent, unlike the peer machine
+# includes: u-boot-distro-boot's uEnv.txt already sets both ahead of the ostree
+# arguments, so a copy here only repeats them on the command line.
+#
+# Two hooks are interpolated after `earlycon`, and each carries its own
+# separator, so whoever sets one writes the leading space itself:
 #
 #     TORIZON_BOARD_KERNEL_ARGS = " uart_from_osc"
 #
 # Without it the value fuses onto `earlycon` into one token the kernel drops,
-# taking the early console with it. Empty by default, which keeps the expansion
-# byte-identical for a board that sets nothing.
+# taking the early console with it. Both are empty by default, which keeps the
+# expansion byte-identical for a board that sets nothing.
+#
+# They are separate variables because an override-qualified assignment REPLACES
+# the base whenever its override is active - `?=` only tests whether that
+# variant is itself already set, not whether the base is. One variable carrying
+# both a SoC default and a board value would therefore drop the board's value on
+# every machine the SoC override matches, silently and in the direction that
+# looks correct on the one board whose value happens to be identical.
 TORIZON_TTY_DEVICE ?= "ttymxc0,115200"
 TORIZON_BOARD_KERNEL_ARGS ?= ""
-OSTREE_KERNEL_ARGS:append:sota = " console=${TORIZON_TTY_DEVICE} earlycon${TORIZON_BOARD_KERNEL_ARGS} root=LABEL=otaroot rootfstype=ext4"
+TORIZON_SOC_KERNEL_ARGS ?= ""
+
+# clk-imx6sx.c reparents the UART during of_clk_init() without recomputing the
+# divisor, so earlycon output is unreadable until the serial driver probes.
+TORIZON_SOC_KERNEL_ARGS:mx6sx-generic-bsp = " uart_from_osc"
+OSTREE_KERNEL_ARGS:append:sota = " console=${TORIZON_TTY_DEVICE} earlycon${TORIZON_SOC_KERNEL_ARGS}${TORIZON_BOARD_KERNEL_ARGS}"
