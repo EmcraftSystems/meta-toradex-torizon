@@ -14,7 +14,7 @@ SRC_URI:append:imx93-11x11-lpddr4x-frdm = " \
 
 FILESEXTRAPATHS:prepend:imx6sxsabresd := "${THISDIR}/files/imx6sxsabresd:${THISDIR}/../../../meta-freescale/recipes-bsp/u-boot/u-boot-fslc:"
 
-SRC_URI:append:imx6sxsabresd = " file://torizon-imx6sx.env file://torizon-imx6sx-env.cfg file://torizon-boot.cfg file://no-ldo-bypass.cfg"
+SRC_URI:append:imx6sxsabresd = " file://torizon-imx6sx.env file://torizon-imx6sx-env.cfg file://torizon-boot.cfg file://no-ldo-bypass.cfg file://fastboot.cfg"
 
 do_configure:prepend:imx6sxsabresd() {
     install -m 0644 ${WORKDIR}/torizon-imx6sx.env ${S}/board/freescale/mx6sxsabresd/torizon-imx6sx.env
