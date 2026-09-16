@@ -47,24 +47,24 @@ OTAROOT_PARTITION_NUMBER = "1"
 # cannot reach, so the boot command carries its own load addresses.
 PREFERRED_PROVIDER_u-boot-default-script = "u-boot-distro-boot"
 
-# The FECs enumerate as end0/end1. Two of them is an i.MX6SX/6UL property, not
-# every i.MX 6 part's; on a single-FEC board end1 is a profile for an interface
-# that never appears, which is what networkmanager's own default already does.
+# The FECs enumerate as eth0/eth1, not the end0/end1 a Toradex module shows:
+# meta-imx masks systemd's renaming policy, so the kernel names survive. Every
+# i.MX 6 machine here is on NXP's BSP; one on the community BSP would set its
+# own value in its machine include, which is where the peer includes set theirs.
 #
-# A machine on NXP's BSP keeps the kernel names instead, because meta-imx masks
-# systemd's renaming policy. That is a property of the BSP rather than of the
-# board, so the override lives in dynamic-layers/meta-imx-bsp and applies itself
-# when that layer is in the build.
-NET_NAME:pn-networkmanager = "end"
+# Two FECs is an i.MX6SX/6UL property, not every i.MX 6 part's; on a single-FEC
+# board the second is a profile for an interface that never appears, which is
+# what networkmanager's own default already does.
+NET_NAME:pn-networkmanager = "eth"
 NET_NUMS:pn-networkmanager = "0 1"
 
 # Kernel command line. Two traps here, and the i.MX8/9 machines in this directory
 # step in the first one:
 #
 #   - `:sota:imx:append` matches nothing on this build. Bare `imx` is not an
-#     active override (MACHINEOVERRIDES resolves to imx-generic-bsp:imx-nxp-bsp,
-#     no plain imx; that one comes from meta-toradex-nxp, absent from these
-#     BBLAYERS), so the assignment vanishes with no diagnostic.
+#     active override - MACHINEOVERRIDES carries no plain imx; that one comes
+#     from meta-toradex-nxp, absent from these BBLAYERS - so the assignment
+#     vanishes with no diagnostic.
 #   - `:sota:append` is NOT an append to OSTREE_KERNEL_ARGS. It appends to the
 #     variant OSTREE_KERNEL_ARGS:sota, which carries no base content and then
 #     REPLACES the base under the active override - silently dropping the
