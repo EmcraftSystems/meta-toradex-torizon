@@ -18,6 +18,7 @@ Build
 |---|---|---|
 | FRDM i.MX 93 | imx93frdm  | Supported  |
 | Verdin i.MX95 EVK  | imx95-19x19-verdin  | Supported |
+| SABRE-SD i.MX 6SoloX | imx6sxsabresd | Supported |
 
 1. Source `setup-environment`, specifying the machine to build with the MACHINE variable e.g.:
 ```bash
@@ -58,6 +59,78 @@ zstdcat if=torizon-docker-imx93-11x11-lpddr4x-frdm-7.0.0-devel-20250602173442+bu
 Flash the Device (FRDM i.MX93 eMMC)
 ======
 Coming Soon
+
+Flash the Device (SABRE-SD i.MX 6SoloX SDCard)
+======
+This board has no eMMC and boots only from the SD card in slot `J4`
+(silkscreened `SD4 BOOT`). Its `uuu -b sd_all` built-in exists but does
+not work here — it ends in `flash bootloader`, a command this board's
+mainline U-Boot does not implement — so this uses a small custom script
+instead. Download [uuu](https://github.com/nxp-imx/mfgtools/releases/tag/uuu_1.5.201)
+or build it from [source](https://github.com/nxp-imx/mfgtools); version
+1.4.182 or later is required (the script itself checks and refuses an
+older one).
+
+1. Insert a microSD card into `J4` (`SD4 BOOT`). Its entire contents are
+   overwritten by this procedure.
+2. Set boot-mode switch `S1` position 1 OFF, position 2 ON, to select
+   the i.MX 6 ROM's serial-downloader strap (`BOOT_MODE[1:0] = 01`). The
+   `BOOT_CFG` switches (`SW10`–`SW12`) stay at the board's factory
+   SD-boot position (SD Boot, 4-bit bus, SDHC4 bus) — nothing to change
+   there.
+3. Connect the board's USB OTG port to the host and power it on (or
+   reset it) with the switch in that position. Confirm it enumerates as
+   the i.MX 6 boot ROM's serial downloader:
+```bash
+$ sudo uuu -lsusb
+	Path	 Chip	 Pro	 Vid	 Pid	 BcdVersion	 Serial_no
+	====================================================================
+	1:2	 MX6SX	 SDP:	 0x15A2	0x0071	 0x0001	
+```
+4. Download `scripts/imx6sxsabresd.uuu` from this repository into the
+   same directory as the built image and bootloader. The script opens
+   them by their stable names, `torizon-docker-imx6sxsabresd.wic` and
+   `u-boot.imx` — if the copy you have carries a version suffix, link
+   the stable names to it:
+```bash
+$ ln -sf torizon-docker-imx6sxsabresd-<version>.wic torizon-docker-imx6sxsabresd.wic
+$ ln -sf u-boot-<version>.imx u-boot.imx
+```
+5. Flash the whole card, using `uuu` >= 1.4.182 (the script itself checks
+   and refuses an older one):
+```bash
+$ sudo uuu imx6sxsabresd.uuu
+```
+For example, flashing a local build:
+```bash
+$ sudo uuu imx6sxsabresd.uuu
+uuu (Universal Update Utility) for nxp imx chips -- libuuu-1.5.243
+
+Success 1    Failure 0
+```
+6. Once the transfer completes, set `S1` position 1 ON, position 2 OFF,
+   to select internal boot (`BOOT_MODE[1:0] = 10`), then press and
+   release the board's reset button `SW3` so the ROM proceeds to the SD
+   card.
+
+Using Torizon OS on the SABRE-SD i.MX 6SoloX
+======
+A few things are specific to this board and worth knowing before using
+the features Torizon OS provides:
+
+- **No eMMC — the SD card is the only storage.** Where Torizon
+  documentation or tooling elsewhere refers to eMMC (health monitoring,
+  the offline-update lockbox medium), this board has none; the SD card
+  in `J4` is both the boot and the root filesystem device.
+- **Ethernet interfaces are `end0` and `end1`**, not `eth0`/`eth1` — this
+  board isn't a Toradex module, so the interface names come from its own
+  device tree rather than Toradex's naming convention.
+- **Remote access needs a restart after first Cloud provisioning.** The
+  service that carries remote-access sessions only starts if the
+  device's private key already exists, and that check runs once at boot
+  — so on a freshly provisioned device (via the Cloud's device-page
+  command), run `sudo systemctl start remote-access` once, or reboot the
+  device, before expecting a remote session to connect.
 
 Manual Setup
 ======
