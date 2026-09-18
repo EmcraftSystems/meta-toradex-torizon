@@ -15,4 +15,12 @@ SRC_URI:append:imx6sxsabresd = " file://0001-ARM-dts-imx6sx-sdb-reva-reset-throu
 SRC_URI:append:imx6sx-blaze = " \
     file://0001-ARM-imx6sx-take-the-FEC1-reference-clock-from-the-pad.patch \
     file://0002-ARM-dts-imx6sx-add-the-i.MX6SoloX-Blaze-board.patch \
+    file://no-localversion-auto.cfg \
 "
+
+# Patches are committed to the kernel tree by git am at build time, so the tree's
+# hash changes on every build; keep it out of the kernel release, as
+# toradex-kernel-localversion does, or sstate can pair a kernel with another
+# build's modules.
+SCMVERSION:imx6sx-blaze = "n"
+DELTA_KERNEL_DEFCONFIG:append:imx6sx-blaze = " no-localversion-auto.cfg"
