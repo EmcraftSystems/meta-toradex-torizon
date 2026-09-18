@@ -1,0 +1,49 @@
+i.MX6SoloX Blaze: take the FEC1 reference clock from the pad
+
+imx6sx_enet_clk_sel() clears both the FEC clock mux select and the pad
+direction unconditionally at machine init. That is right for the RGMII
+reference designs, where the PHY has its own crystal, and wrong for an RMII
+board where the PHY supplies the 50 MHz reference back to the SoC -- GPR1[13]
+has to select the external clock.
+
+This is the whole fix. Nothing needs to set IMX6SX_CLK_ENET_REF: with bit 13
+set the reference arrives on the pad, so the SoC's internal ENET_REF is not
+the source and its rate does not matter. Confirmed on hardware -- the link
+comes up at 100/full with no rate assignment in the device tree at all.
+
+Because it runs at machine init it also overwrites whatever the bootloader
+configured, so this cannot be worked around from the device tree or from
+U-Boot. The two in-tree i.MX6SX RMII boards, udoo-neo and
+softing-vining-2000, carry no clock configuration at all and appear never to
+have been exercised against this.
+
+Without it the PHY never answers MDIO, and the failure is not benign: the
+FEC's phy-connect error path corrupts the slab, and the kernel oopses in
+kmem_cache_alloc about five seconds later in whatever allocates next.
+
+This sets it unconditionally, which is enough to test the theory on one
+machine. The upstream shape would key it on the FEC's phy-mode.
+
+Upstream-Status: Pending
+---
+--- a/arch/arm/mach-imx/mach-imx6sx.c
++++ b/arch/arm/mach-imx/mach-imx6sx.c
+@@ -20,8 +20,17 @@
+ 
+ 	gpr = syscon_regmap_lookup_by_compatible("fsl,imx6sx-iomuxc-gpr");
+ 	if (!IS_ERR(gpr)) {
++		/*
++		 * FEC1 here is RMII with the PHY driving the 50 MHz reference
++		 * back into the SoC, so GPR1[13] has to select the external
++		 * clock. Upstream hardcodes both fields to zero, which is
++		 * correct only for the RGMII reference designs -- and it
++		 * overwrites whatever the bootloader set, so an RMII board
++		 * cannot work around it from the device tree either.
++		 */
+ 		regmap_update_bits(gpr, IOMUXC_GPR1,
+-				   IMX6SX_GPR1_FEC_CLOCK_MUX_SEL_MASK, 0);
++				   IMX6SX_GPR1_FEC_CLOCK_MUX_SEL_MASK,
++				   0x1 << 13);
+ 		regmap_update_bits(gpr, IOMUXC_GPR1,
+ 				   IMX6SX_GPR1_FEC_CLOCK_PAD_DIR_MASK, 0);
+ 	} else {
