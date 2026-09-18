@@ -41,6 +41,12 @@ SRC_URI:append:imx6sx-blaze = " \
     file://fastboot.cfg \
 "
 
+SRC_URI:append:imx6sx-blaze = " \
+    file://0001-imx6sx-blaze-uart3-console-and-pfuze3000-pmic.patch \
+    file://0002-imx6sx-blaze-take-the-MAC-address-from-the-EEPROM.patch \
+    file://0003-imx6sx-blaze-rmii-clocking-for-enet1.patch \
+"
+
 # No board port exists for this board: the SABRE-SD defconfig is built with this
 # board's control device tree and DDR in place of the SABRE-SD's own.
 do_configure:prepend:imx6sx-blaze() {
