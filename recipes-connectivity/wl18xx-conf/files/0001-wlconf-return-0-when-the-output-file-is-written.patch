@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Fri, 25 Sep 2026 11:22:55 +0200
+Subject: [PATCH] wlconf: return 0 when the output file is written
+
+write_file() returns ret uninitialised on success, so the exit status of
+a run that wrote a correct file is whatever was on the stack.
+
+Upstream-Status: Inactive-Upstream [lastcommit: 2017, lastrelease: R8.8]
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ wlconf/main.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/wlconf/main.c b/wlconf/main.c
+index 6a4d8ae..f0c9d20 100644
+--- a/wlconf/main.c
++++ b/wlconf/main.c
+@@ -557,7 +557,7 @@ static void free_file(void *buffer)
+ static int write_file(const char *filename, const void *buffer, size_t size)
+ {
+ 	FILE *file;
+-	int ret;
++	int ret = 0;
+ 
+ 	file = fopen(filename, "w");
+ 	if (!file) {
