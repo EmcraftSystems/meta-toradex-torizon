@@ -21,5 +21,5 @@ UBOOT_BINARY_OTA:imx6sx-blaze = "u-boot.imx"
 # The module's PHY calibration, wl18xx-conf, is not listed here: it needs the
 # module vendor's INI, which this layer does not carry (see wl18xx-conf.bb).
 # Without it the driver warns and falls back to built-in defaults.
-MACHINE_FEATURES += "wifi usbhost"
+MACHINE_FEATURES += "wifi usbhost usbgadget"
 MACHINE_EXTRA_RRECOMMENDS:append = " linux-firmware-wl18xx"
