@@ -93,6 +93,16 @@
 		startup-delay-us = <70000>;
 	};
 
+	reg_usb_otg1_vbus: regulator-usb-otg1-vbus {
+		compatible = "regulator-fixed";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_usb_otg1>;
+		regulator-name = "usb_otg1_vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		gpio = <&gpio1 9 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
 
 	reg_usb_otg2_vbus: regulator-usb-otg2-vbus {
 		compatible = "regulator-fixed";
@@ -299,6 +309,13 @@
 	status = "okay";
 };
 
+&usbotg1 {
+	vbus-supply = <&reg_usb_otg1_vbus>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usb_otg1_id>, <&pinctrl_usb_otg1_oc>;
+	over-current-active-low;
+	status = "okay";
+};
 
 &usbotg2 {
 	vbus-supply = <&reg_usb_otg2_vbus>;
@@ -433,8 +450,23 @@
 			MX6SX_PAD_KEY_ROW0__GPIO2_IO_15		0x80000000
 		>;
 	};
+	pinctrl_usb_otg1: usbotg1grp {
+		fsl,pins = <
+			MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x10b0
+		>;
+	};
 
+	pinctrl_usb_otg1_oc: usbotg1ocgrp {
+		fsl,pins = <
+			MX6SX_PAD_GPIO1_IO08__USB_OTG1_OC	0x17059
+		>;
+	};
 
+	pinctrl_usb_otg1_id: usbotg1idgrp {
+		fsl,pins = <
+			MX6SX_PAD_GPIO1_IO10__ANATOP_OTG1_ID	0x17059
+		>;
+	};
 
 	pinctrl_usb_otg2: usbotg2grp {
 		fsl,pins = <
