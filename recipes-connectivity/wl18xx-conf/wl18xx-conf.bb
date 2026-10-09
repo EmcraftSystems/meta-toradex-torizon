@@ -2,46 +2,80 @@ SUMMARY = "PHY configuration for the TI WiLink 8 Wi-Fi module of imx6sx-blaze"
 DESCRIPTION = "\
 The wl18xx driver reads ti-connectivity/wl18xx-conf.bin at probe and applies \
 the front-end, antenna and TX power settings it carries. Without it the driver \
-warns and falls back to built-in defaults. The file is the board vendor's and \
-is not carried here: the builder supplies it."
+warns and falls back to built-in defaults. The board has one file per display \
+panel, the vendor's, and they are not carried here: the builder supplies them."
 
-# The file is the board vendor's data and is neither stored nor distributed with
-# this layer. Place it at WL18XX_CONF_BIN before building (docs/README-nxp.md);
+# The files are the board vendor's data and are neither stored nor distributed
+# with this layer. Place them at these paths before building (docs/README-nxp.md);
 # the default is next to the build directory, in the directory `repo sync` ran in.
-# Without the file the package is empty, the build warns, and the image carries no
-# calibration; the recipe still builds then, because the machine recommends it.
-WL18XX_CONF_BIN ?= "${TOPDIR}/../wl18xx-conf.bin"
+# A file that is missing is left out and the build warns; without either, the
+# package is empty and the image carries no calibration. The recipe still builds
+# then, because the machine recommends it.
+WL18XX_CONF_BIN_7INCH ?= "${TOPDIR}/../wl18xx-conf-7inch.bin"
+WL18XX_CONF_BIN_10INCH ?= "${TOPDIR}/../wl18xx-conf-10inch.bin"
 
 LICENSE = "CLOSED"
 
 COMPATIBLE_MACHINE = "imx6sx-blaze"
 
+inherit systemd
+
+SRC_URI = " \
+    file://wl18xx-conf-select \
+    file://wl18xx-conf-select.service \
+"
+
 python () {
-    path = d.getVar('WL18XX_CONF_BIN')
-    # Re-parse when the file appears or goes away; its content is tracked through SRC_URI.
-    bb.parse.mark_dependency(d, path)
-    if os.path.isfile(path):
-        d.appendVar('SRC_URI', ' file://' + path)
+    for var in ('WL18XX_CONF_BIN_7INCH', 'WL18XX_CONF_BIN_10INCH'):
+        path = d.getVar(var)
+        # Re-parse when the file appears or goes away; its content is tracked through SRC_URI.
+        bb.parse.mark_dependency(d, path)
+        if os.path.isfile(path):
+            d.appendVar('SRC_URI', ' file://' + path)
 }
 
 S = "${WORKDIR}"
 
-# The file is per board: keep it out of the shared package feeds of other machines.
+# The files are per board: keep them out of the shared package feeds of other machines.
 PACKAGE_ARCH = "${MACHINE_ARCH}"
-INHIBIT_DEFAULT_DEPS = "1"
 
 do_configure[noexec] = "1"
 do_compile[noexec] = "1"
 
+FWDIR = "${nonarch_base_libdir}/firmware/ti-connectivity"
+
 do_install() {
-    if [ ! -f "${WL18XX_CONF_BIN}" ]; then
-        bbwarn "No ${WL18XX_CONF_BIN}: the image carries no Wi-Fi calibration. The board vendor supplies the file (docs/README-nxp.md)."
-        return
-    fi
-    install -d ${D}${nonarch_base_libdir}/firmware/ti-connectivity
-    install -m 0644 ${WL18XX_CONF_BIN} \
-        ${D}${nonarch_base_libdir}/firmware/ti-connectivity/wl18xx-conf.bin
+    for panel in 7inch 10inch; do
+        if [ "$panel" = 7inch ]; then
+            bin="${WL18XX_CONF_BIN_7INCH}"
+        else
+            bin="${WL18XX_CONF_BIN_10INCH}"
+        fi
+        if [ ! -f "$bin" ]; then
+            bbwarn "No $bin: the image carries no Wi-Fi calibration for the $panel panel. The board vendor supplies the file (docs/README-nxp.md)."
+            continue
+        fi
+        install -d ${D}${FWDIR}/$panel
+        install -m 0644 "$bin" ${D}${FWDIR}/$panel/wl18xx-conf.bin
+        # The file the driver asks for, which wl18xx-conf-select mounts the
+        # panel's file over at boot: the first one given, so the 7" panel's.
+        if [ ! -f ${D}${FWDIR}/wl18xx-conf.bin ]; then
+            install -m 0644 "$bin" ${D}${FWDIR}/wl18xx-conf.bin
+        fi
+    done
+
+    install -d ${D}${libexecdir} ${D}${systemd_system_unitdir}
+    install -m 0755 ${WORKDIR}/wl18xx-conf-select ${D}${libexecdir}/
+    install -m 0644 ${WORKDIR}/wl18xx-conf-select.service ${D}${systemd_system_unitdir}/
+    sed -i -e 's,@LIBEXECDIR@,${libexecdir},g' -e 's,@FWDIR@,${FWDIR},g' \
+        ${D}${libexecdir}/wl18xx-conf-select \
+        ${D}${systemd_system_unitdir}/wl18xx-conf-select.service
 }
 
-FILES:${PN} = "${nonarch_base_libdir}/firmware/ti-connectivity/wl18xx-conf.bin"
-ALLOW_EMPTY:${PN} = "1"
+SYSTEMD_SERVICE:${PN} = "wl18xx-conf-select.service"
+
+FILES:${PN} = " \
+    ${FWDIR} \
+    ${libexecdir}/wl18xx-conf-select \
+    ${systemd_system_unitdir}/wl18xx-conf-select.service \
+"

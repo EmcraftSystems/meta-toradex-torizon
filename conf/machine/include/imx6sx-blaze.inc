@@ -18,8 +18,8 @@ UBOOT_BINARY_OTA:imx6sx-blaze = "u-boot.imx"
 # packagegroup-base-wifi carries no TI firmware, so the driver cannot boot the
 # chip without linux-firmware-wl18xx.
 #
-# The module's PHY calibration, wl18xx-conf, carries the board vendor's
-# wl18xx-conf.bin when the builder supplies it (see wl18xx-conf.bb); without it
-# the package is empty and the driver falls back to built-in defaults.
+# The module's PHY calibration, wl18xx-conf, carries the board vendor's per-panel
+# wl18xx-conf.bin files when the builder supplies them (see wl18xx-conf.bb);
+# without them the driver falls back to built-in defaults.
 MACHINE_FEATURES += "wifi usbhost usbgadget"
 MACHINE_EXTRA_RRECOMMENDS:append = " linux-firmware-wl18xx wl18xx-conf"
