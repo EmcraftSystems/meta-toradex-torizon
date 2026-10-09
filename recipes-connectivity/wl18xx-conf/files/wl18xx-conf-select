@@ -10,7 +10,7 @@ fi
 
 src=$dir/$panel/wl18xx-conf.bin
 if [ ! -f "$src" ]; then
-	echo "No Wi-Fi calibration for the $panel panel; keeping $dir/wl18xx-conf.bin" >&2
+	echo "No Wi-Fi calibration for the $panel panel; the driver uses its defaults" >&2
 	exit 0
 fi
 

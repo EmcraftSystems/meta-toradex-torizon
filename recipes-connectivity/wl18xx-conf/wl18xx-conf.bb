@@ -8,9 +8,8 @@ panel, the vendor's, and they are not carried here: the builder supplies them."
 # The files are the board vendor's data and are neither stored nor distributed
 # with this layer. Place them at these paths before building (docs/README-nxp.md);
 # the default is next to the build directory, in the directory `repo sync` ran in.
-# A file that is missing is left out and the build warns; without either, the
-# package is empty and the image carries no calibration. The recipe still builds
-# then, because the machine recommends it.
+# A file that is missing is left out and the build warns; a board with that
+# panel then runs the driver's built-in defaults.
 WL18XX_CONF_BIN_7INCH ?= "${TOPDIR}/../wl18xx-conf-7inch.bin"
 WL18XX_CONF_BIN_10INCH ?= "${TOPDIR}/../wl18xx-conf-10inch.bin"
 
@@ -57,12 +56,13 @@ do_install() {
         fi
         install -d ${D}${FWDIR}/$panel
         install -m 0644 "$bin" ${D}${FWDIR}/$panel/wl18xx-conf.bin
-        # The file the driver asks for, which wl18xx-conf-select mounts the
-        # panel's file over at boot: the first one given, so the 7" panel's.
-        if [ ! -f ${D}${FWDIR}/wl18xx-conf.bin ]; then
-            install -m 0644 "$bin" ${D}${FWDIR}/wl18xx-conf.bin
-        fi
     done
+
+    # The file the driver asks for, and the mount point for the panel's file.
+    # Empty, so a panel with no file gets the driver's defaults rather than
+    # the other panel's limits: the firmware loader rejects an empty file.
+    install -d ${D}${FWDIR}
+    install -m 0644 /dev/null ${D}${FWDIR}/wl18xx-conf.bin
 
     install -d ${D}${libexecdir} ${D}${systemd_system_unitdir}
     install -m 0755 ${WORKDIR}/wl18xx-conf-select ${D}${libexecdir}/
