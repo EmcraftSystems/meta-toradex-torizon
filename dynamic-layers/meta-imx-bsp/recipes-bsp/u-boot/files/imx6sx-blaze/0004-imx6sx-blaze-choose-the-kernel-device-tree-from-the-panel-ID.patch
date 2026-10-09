@@ -1,0 +1,107 @@
+From 931570eaad859486082f8f9b5e224bd91ad467f5 Mon Sep 17 00:00:00 2001
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Fri, 9 Oct 2026 10:36:02 +0200
+Subject: [PATCH] imx6sx-blaze: choose the kernel device tree from the panel ID
+
+The board takes either a 7" or a 10.1" panel, told apart by three
+panel-ID lines on GPIO4_26, GPIO4_27 and GPIO4_31. As in the board's
+existing BSP, 0x06 is the 10.1" panel and every other value the 7" one.
+fdtfile is set to imx6sx-blaze-cmt1010.dtb or imx6sx-blaze.dtb on every
+boot; fdtfile_override, when set, is used instead.
+
+An environment saved by an earlier bootloader keeps a bootcmd that set
+fdtfile itself; that bootcmd is replaced with the built-in one.
+
+Upstream-Status: Inappropriate [board-specific]
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ board/freescale/mx6sxsabresd/mx6sxsabresd.c | 42 +++++++++++++++++++++
+ 1 file changed, 42 insertions(+)
+
+diff --git a/board/freescale/mx6sxsabresd/mx6sxsabresd.c b/board/freescale/mx6sxsabresd/mx6sxsabresd.c
+index 50091f38a43..0a371db21a5 100644
+--- a/board/freescale/mx6sxsabresd/mx6sxsabresd.c
++++ b/board/freescale/mx6sxsabresd/mx6sxsabresd.c
+@@ -748,6 +748,12 @@ static iomux_v3_cfg_t const board_id_pads[] = {
+ 	MX6_PAD_RGMII2_TX_CTL__GPIO5_IO_22 | MUX_PAD_CTRL(NO_PAD_CTRL),
+ };
+ 
++static iomux_v3_cfg_t const panel_id_pads[] = {
++	MX6_PAD_QSPI1B_DATA2__GPIO4_IO_26 | MUX_PAD_CTRL(NO_PAD_CTRL),
++	MX6_PAD_QSPI1B_DATA3__GPIO4_IO_27 | MUX_PAD_CTRL(NO_PAD_CTRL),
++	MX6_PAD_QSPI1B_SS1_B__GPIO4_IO_31 | MUX_PAD_CTRL(NO_PAD_CTRL),
++};
++
+ static iomux_v3_cfg_t const dip_sw_pads[] = {
+ 	MX6_PAD_KEY_ROW2__GPIO2_IO_17 | MUX_PAD_CTRL(NO_PAD_CTRL),
+ 	MX6_PAD_KEY_ROW3__GPIO2_IO_18 | MUX_PAD_CTRL(NO_PAD_CTRL),
+@@ -761,6 +767,15 @@ static unsigned int const board_id_gpios[] = {
+ 	IMX_GPIO_NR(5, 23), IMX_GPIO_NR(5, 22),
+ };
+ 
++static unsigned int const panel_id_gpios[] = {
++	IMX_GPIO_NR(4, 26), IMX_GPIO_NR(4, 27), IMX_GPIO_NR(4, 31),
++};
++
++/* 0x06 is the 10.1" panel; 0x07, and anything else, the 7" one. */
++#define PANEL_ID_10INCH	0x06
++
++static int panel_id = -1;
++
+ static unsigned int const dip_sw_gpios[] = {
+ 	IMX_GPIO_NR(2, 17), IMX_GPIO_NR(2, 18),
+ 	IMX_GPIO_NR(4, 0), IMX_GPIO_NR(4, 3),
+@@ -811,9 +826,12 @@ int board_init(void)
+ 
+ 	imx_iomux_v3_setup_multiple_pads(board_id_pads, ARRAY_SIZE(board_id_pads));
+ 	imx_iomux_v3_setup_multiple_pads(dip_sw_pads, ARRAY_SIZE(dip_sw_pads));
++	imx_iomux_v3_setup_multiple_pads(panel_id_pads, ARRAY_SIZE(panel_id_pads));
+ 
+ 	read_straps(board_id_gpios, ARRAY_SIZE(board_id_gpios), "Board ID");
+ 	read_straps(dip_sw_gpios, ARRAY_SIZE(dip_sw_gpios), "DIP");
++	panel_id = read_straps(panel_id_gpios, ARRAY_SIZE(panel_id_gpios),
++			       "Panel ID");
+ 
+ #ifdef CONFIG_SYS_I2C_LEGACY
+ 	setup_i2c(0, CONFIG_SYS_I2C_SPEED, 0x7f, &i2c_pad_info1);
+@@ -874,6 +892,28 @@ static int blaze_mac_from_eeprom(u8 mac[6])
+ 	return is_valid_ethaddr(mac) ? 0 : -EINVAL;
+ }
+ 
++/*
++ * The kernel device tree follows the panel. fdtfile_override, when set, wins:
++ * for service, or a board whose panel-ID lines read wrong.
++ */
++static void blaze_select_fdtfile(void)
++{
++	const char *fdt = env_get("fdtfile_override");
++	const char *cmd = env_get("bootcmd");
++
++	/*
++	 * An environment saved by an older bootloader keeps its bootcmd, which
++	 * set fdtfile to the 7" tree on every boot.
++	 */
++	if (cmd && strstr(cmd, "setenv fdtfile imx6sx-blaze.dtb;"))
++		env_set("bootcmd", CONFIG_BOOTCOMMAND);
++
++	if (!fdt)
++		fdt = panel_id == PANEL_ID_10INCH ? "imx6sx-blaze-cmt1010.dtb" :
++						    "imx6sx-blaze.dtb";
++	env_set("fdtfile", fdt);
++}
++
+ int board_late_init(void)
+ {
+ 	u8 mac[6];
+@@ -886,6 +926,8 @@ int board_late_init(void)
+ 			eth_env_set_enetaddr("ethaddr", mac);
+ 	}
+ 
++	blaze_select_fdtfile();
++
+ #ifdef CONFIG_ENV_VARS_UBOOT_RUNTIME_CONFIG
+ 	if (is_reva())
+ 		env_set("board_rev", "REVA");
+-- 
+2.43.0
+
