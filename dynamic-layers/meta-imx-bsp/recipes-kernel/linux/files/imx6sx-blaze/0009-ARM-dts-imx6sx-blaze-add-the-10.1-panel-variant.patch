@@ -1,0 +1,75 @@
+From 53112e61772a95520504c5e75f9abf8780aad69f Mon Sep 17 00:00:00 2001
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Fri, 9 Oct 2026 09:05:44 +0200
+Subject: [PATCH] ARM: dts: imx6sx-blaze: add the 10.1" panel variant
+
+A second tree for units with the 10.1" 1280x800 CMT1010A09C00C panel:
+the board's tree with the panel's timing and size, PLL5's video output
+at 497.7 MHz for the 71.1 MHz pixel clock. The timing is the one the
+board's existing BSP uses. The panel's ST1727 touch controller answers
+at 0x70, as the 7" panel's ST1633 does, so the board's touch node
+serves both; the vendor driver reads the two alike. A compatible of its
+own lets user space tell the panel variant from the tree it booted.
+
+Upstream-Status: Inappropriate [board-specific]
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ arch/arm/boot/dts/nxp/imx/Makefile            |  1 +
+ .../boot/dts/nxp/imx/imx6sx-blaze-cmt1010.dts | 33 +++++++++++++++
+ 2 files changed, 34 insertions(+)
+ create mode 100644 arch/arm/boot/dts/nxp/imx/imx6sx-blaze-cmt1010.dts
+
+diff --git a/arch/arm/boot/dts/nxp/imx/Makefile b/arch/arm/boot/dts/nxp/imx/Makefile
+index 68b9a83..a5593be 100644
+--- a/arch/arm/boot/dts/nxp/imx/Makefile
++++ b/arch/arm/boot/dts/nxp/imx/Makefile
+@@ -318,6 +318,7 @@ dtb-$(CONFIG_SOC_IMX6SLL) += \
+ 	imx6sll-kobo-librah2o.dtb
+ dtb-$(CONFIG_SOC_IMX6SX) += \
+ 	imx6sx-blaze.dtb \
++	imx6sx-blaze-cmt1010.dtb \
+ 	imx6sx-nitrogen6sx.dtb \
+ 	imx6sx-sabreauto.dtb \
+ 	imx6sx-sdb-reva.dtb \
+diff --git a/arch/arm/boot/dts/nxp/imx/imx6sx-blaze-cmt1010.dts b/arch/arm/boot/dts/nxp/imx/imx6sx-blaze-cmt1010.dts
+new file mode 100644
+index 0000000..37ce74e
+--- /dev/null
++++ b/arch/arm/boot/dts/nxp/imx/imx6sx-blaze-cmt1010.dts
+@@ -0,0 +1,33 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * The i.MX6SoloX Blaze board with the 10.1" 1280x800 CMT1010A09C00C panel.
++ */
++
++#include "imx6sx-blaze.dts"
++
++/ {
++	compatible = "fsl,imx6sx-blaze-cmt1010", "fsl,imx6sx-blaze", "fsl,imx6sx";
++};
++
++&{/panel} {
++	/* Typical 10.1" 16:10 active area; required by the timing parser. */
++	width-mm = <217>;
++	height-mm = <136>;
++
++	panel-timing {
++		clock-frequency = <71100000>;
++		hactive = <1280>;
++		vactive = <800>;
++		hfront-porch = <70>;
++		hback-porch = <70>;
++		hsync-len = <20>;
++		vfront-porch = <10>;
++		vback-porch = <10>;
++		vsync-len = <3>;
++	};
++};
++
++/* Seven times the 71.1 MHz pixel clock. */
++&lcdif1 {
++	assigned-clock-rates = <0>, <0>, <0>, <497700000>;
++};
+-- 
+2.43.0
+
