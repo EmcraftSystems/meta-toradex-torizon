@@ -45,6 +45,7 @@ SRC_URI:append:imx6sx-blaze = " \
     file://0001-imx6sx-blaze-UART3-console-PFUZE3000-PMIC-eMMC-environment.patch \
     file://0002-imx6sx-blaze-take-the-MAC-address-from-the-board-s-EEPROM.patch \
     file://0003-imx6sx-blaze-RMII-clocking-for-ENET1.patch \
+    file://0004-imx6sx-blaze-choose-the-kernel-device-tree-from-the-panel-ID.patch \
 "
 
 # No board port exists for this board: the SABRE-SD defconfig is built with this
