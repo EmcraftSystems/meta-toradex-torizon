@@ -111,12 +111,14 @@ $ ln -s sources/meta-imx-frdm/tools/imx-frdm-setup.sh imx-frdm-setup.sh
 
 Additional Setup for i.MX 6SoloX Blaze boards
 ======
-1. The Wi-Fi module's calibration file, `wl18xx-conf.bin`, is the board vendor's and is not distributed with this layer. Obtain it from the board vendor and, before building, place it in the directory `repo sync` ran in (`common-torizon` above), next to the build directory:
+1. The Wi-Fi module's calibration files are the board vendor's and are not distributed with this layer. There is one per display panel: the board's 7" and 10.1" variants use different transmit-power limits. Obtain both from the board vendor and, before building, place them in the directory `repo sync` ran in (`common-torizon` above), next to the build directory, under these names:
 ```bash
-$ cp /path/to/wl18xx-conf.bin .
+$ cp /path/to/7-inch/wl18xx-conf.bin wl18xx-conf-7inch.bin
+$ cp /path/to/10-inch/wl18xx-conf.bin wl18xx-conf-10inch.bin
 ```
-To keep it elsewhere, set its full path in `<build-directory>/conf/local.conf`:
+To keep them elsewhere, set their full paths in `<build-directory>/conf/local.conf`:
 ```
-WL18XX_CONF_BIN = "/path/to/wl18xx-conf.bin"
+WL18XX_CONF_BIN_7INCH = "/path/to/wl18xx-conf-7inch.bin"
+WL18XX_CONF_BIN_10INCH = "/path/to/wl18xx-conf-10inch.bin"
 ```
-Without the file the build still succeeds, but the image carries no calibration and the Wi-Fi driver uses its built-in defaults.
+At boot the image uses the file for the panel the bootloader detected. Without a panel's file the build still succeeds, but a board with that panel gets no calibration and the Wi-Fi driver uses its built-in defaults.

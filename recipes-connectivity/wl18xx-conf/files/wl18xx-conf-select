@@ -1,0 +1,18 @@
+#!/bin/sh
+# Mount the display panel's Wi-Fi calibration over the file the wl18xx driver
+# loads. The panel is the one the bootloader chose the device tree for.
+
+dir=@FWDIR@
+panel=7inch
+if tr '\0' '\n' < /proc/device-tree/compatible | grep -qx 'fsl,imx6sx-blaze-cmt1010'; then
+	panel=10inch
+fi
+
+src=$dir/$panel/wl18xx-conf.bin
+if [ ! -f "$src" ]; then
+	echo "No Wi-Fi calibration for the $panel panel; keeping $dir/wl18xx-conf.bin" >&2
+	exit 0
+fi
+
+echo "Wi-Fi calibration: $panel panel"
+exec mount --bind "$src" "$dir/wl18xx-conf.bin"

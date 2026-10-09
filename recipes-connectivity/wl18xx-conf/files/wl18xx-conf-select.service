@@ -1,0 +1,14 @@
+[Unit]
+Description=Select the Wi-Fi calibration for the display panel
+DefaultDependencies=no
+# udev loads the wl18xx module on coldplug, and the driver reads the file at probe.
+Before=systemd-udev-trigger.service sysinit.target
+ConditionPathExists=@FWDIR@/wl18xx-conf.bin
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=@LIBEXECDIR@/wl18xx-conf-select
+
+[Install]
+WantedBy=sysinit.target
