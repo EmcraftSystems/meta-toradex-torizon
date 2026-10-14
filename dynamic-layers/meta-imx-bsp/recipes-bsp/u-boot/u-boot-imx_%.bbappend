@@ -47,6 +47,7 @@ SRC_URI:append:imx6sx-blaze = " \
     file://0003-imx6sx-blaze-RMII-clocking-for-ENET1.patch \
     file://0004-imx6sx-blaze-choose-the-kernel-device-tree-from-the-panel-ID.patch \
     file://0005-imx6sx-blaze-set-the-PFUZE3000-LDOs.patch \
+    file://0006-imx6sx-blaze-drive-the-10-V-and-5-V-rail-enables-low.patch \
 "
 
 # No board port exists for this board: the SABRE-SD defconfig is built with this
