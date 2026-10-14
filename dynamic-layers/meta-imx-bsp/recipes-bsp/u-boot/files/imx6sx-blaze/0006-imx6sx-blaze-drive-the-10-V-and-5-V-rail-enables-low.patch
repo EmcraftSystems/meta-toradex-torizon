@@ -1,0 +1,51 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Mon, 12 Oct 2026 10:29:02 +0200
+Subject: [PATCH] imx6sx-blaze: drive the 10 V and 5 V rail enables low
+
+P10V_OFF_CTRL (GPIO4_IO24) and SYS_5V_OFF_CTRL (GPIO4_IO25) each drive
+the gate of a 2N7002 that pulls a buck converter's enable low: P10V for
+the panel, 5V_IO for both USB VBUS switches. A 10 kOhm gate pull-down is
+all that keeps both rails on. Drive the lines low, as the product's own
+bootloader does, so the rails no longer depend on the pull-down alone.
+
+Upstream-Status: Inappropriate [board-specific]
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ board/freescale/mx6sxsabresd/mx6sxsabresd.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/board/freescale/mx6sxsabresd/mx6sxsabresd.c b/board/freescale/mx6sxsabresd/mx6sxsabresd.c
+index 4877fa3d42e..f75b6b8e067 100644
+--- a/board/freescale/mx6sxsabresd/mx6sxsabresd.c
++++ b/board/freescale/mx6sxsabresd/mx6sxsabresd.c
+@@ -768,6 +768,11 @@ static iomux_v3_cfg_t const peri_pwr_en_pads[] = {
+ 	MX6_PAD_KEY_ROW0__GPIO2_IO_15 | MUX_PAD_CTRL(NO_PAD_CTRL),
+ };
+ 
++static iomux_v3_cfg_t const rail_off_ctrl_pads[] = {
++	MX6_PAD_QSPI1B_DATA0__GPIO4_IO_24 | MUX_PAD_CTRL(NO_PAD_CTRL),
++	MX6_PAD_QSPI1B_DATA1__GPIO4_IO_25 | MUX_PAD_CTRL(NO_PAD_CTRL),
++};
++
+ static iomux_v3_cfg_t const board_id_pads[] = {
+ 	MX6_PAD_RGMII2_TD2__GPIO5_IO_20 | MUX_PAD_CTRL(NO_PAD_CTRL),
+ 	MX6_PAD_RGMII2_TD3__GPIO5_IO_21 | MUX_PAD_CTRL(NO_PAD_CTRL),
+@@ -847,6 +852,14 @@ int board_init(void)
+ 	gpio_request(IMX_GPIO_NR(2, 15), "peri_pwr_en");
+ 	gpio_direction_output(IMX_GPIO_NR(2, 15), 1);
+ 
++	/* P10V_OFF_CTRL (panel 10 V) and SYS_5V_OFF_CTRL (USB VBUS 5 V) turn
++	 * their bucks off when high; a pull-down is all that keeps them on. */
++	imx_iomux_v3_setup_multiple_pads(rail_off_ctrl_pads, ARRAY_SIZE(rail_off_ctrl_pads));
++	gpio_request(IMX_GPIO_NR(4, 24), "p10v_off_ctrl");
++	gpio_direction_output(IMX_GPIO_NR(4, 24), 0);
++	gpio_request(IMX_GPIO_NR(4, 25), "sys_5v_off_ctrl");
++	gpio_direction_output(IMX_GPIO_NR(4, 25), 0);
++
+ 	imx_iomux_v3_setup_multiple_pads(power_led_pads, ARRAY_SIZE(power_led_pads));
+ 	gpio_request(IMX_GPIO_NR(4, 19), "power_led");
+ 	gpio_direction_output(IMX_GPIO_NR(4, 19), 1);
+-- 
+2.25.1
+

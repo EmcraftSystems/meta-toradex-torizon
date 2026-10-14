@@ -32,6 +32,7 @@ SRC_URI:append:imx6sx-blaze = " \
     file://0009-ARM-dts-imx6sx-blaze-add-the-10.1-panel-variant.patch \
     file://rtc.cfg \
     file://display.cfg \
+    file://usb-serial.cfg \
 "
 
-DELTA_KERNEL_DEFCONFIG:append:imx6sx-blaze = " rtc.cfg display.cfg"
+DELTA_KERNEL_DEFCONFIG:append:imx6sx-blaze = " rtc.cfg display.cfg usb-serial.cfg"
