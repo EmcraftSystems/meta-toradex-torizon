@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Mon, 12 Oct 2026 10:28:33 +0200
+Subject: [PATCH] imx6sx-blaze: set the PFUZE3000 LDOs
+
+The product's bootloader sets three of the PFUZE3000's LDOs: V33 to
+3.00 V, VCC_SD to 3.30 V, and VLDO4 to 1.80 V and off in standby. Set
+them the same way.
+
+On the MC34PF3000A3 fitted here those voltages are the OTP defaults, so
+the one register change is VLDO4's standby bit. Standby is never entered
+on this board, so that bit has no effect either. Setting the voltages
+keeps the rails right on a board fitted with another OTP variant.
+
+V33 supplies the SoC's VDD_HIGH_IN, VCC_SD supplies VDDA_ADC_3P3, and
+VLDO4 supplies the Wi-Fi module's 1.8 V I/O.
+
+Upstream-Status: Inappropriate [board-specific]
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ board/freescale/mx6sxsabresd/mx6sxsabresd.c | 29 ++++++++++++++++++++-
+ 1 file changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/board/freescale/mx6sxsabresd/mx6sxsabresd.c b/board/freescale/mx6sxsabresd/mx6sxsabresd.c
+index 0a371db21a5..4877fa3d42e 100644
+--- a/board/freescale/mx6sxsabresd/mx6sxsabresd.c
++++ b/board/freescale/mx6sxsabresd/mx6sxsabresd.c
+@@ -32,6 +32,7 @@
+ #include <netdev.h>
+ #include <power/pmic.h>
+ #include <power/pfuze100_pmic.h>
++#include <power/pfuze3000_pmic.h>
+ #include "../common/pfuze.h"
+ #include <usb.h>
+ #include <usb/ehci-ci.h>
+@@ -268,6 +269,31 @@ int power_init_board(void)
+ 	return 0;
+ }
+ #elif defined(CONFIG_DM_PMIC_PFUZE100)
++#define PFUZE3000_LDO_EN	BIT(4)
++#define PFUZE3000_LDO_STBY	BIT(5)
++#define PFUZE3000_V33_3V0	0x1
++#define PFUZE3000_VCC_SD_3V3	0x3
++#define PFUZE3000_VLDO_1V8	0x0
++
++/*
++ * V33 (VDD_HIGH_IN) 3.0 V, VCC_SD (VDDA_ADC_3P3) 3.3 V, VLDO4 (Wi-Fi I/O)
++ * 1.8 V and off in standby. Other bits keep their OTP values.
++ */
++static void pfuze3000_init_ldos(struct udevice *dev)
++{
++	int ret;
++
++	ret = pmic_clrsetbits(dev, PFUZE3000_V33CTL, 0x3,
++			      PFUZE3000_LDO_EN | PFUZE3000_V33_3V0);
++	ret |= pmic_clrsetbits(dev, PFUZE3000_VCC_SDCTL, 0x3,
++			       PFUZE3000_LDO_EN | PFUZE3000_VCC_SD_3V3);
++	ret |= pmic_clrsetbits(dev, PFUZE3000_VLD4CTL, 0xf,
++			       PFUZE3000_LDO_EN | PFUZE3000_LDO_STBY |
++			       PFUZE3000_VLDO_1V8);
++	if (ret)
++		printf("PMIC:  failed to set the PFUZE3000 LDOs\n");
++}
++
+ int power_init_board(void)
+ {
+ 	struct udevice *dev;
+@@ -275,13 +301,14 @@ int power_init_board(void)
+ 	int ret;
+ 
+ 	/* PFUZE3000: its standby and mode registers decode differently from the
+-	 * PFUZE100/200 sequence below, and its rails are correct from reset. */
++	 * PFUZE100/200 sequence below, so it only gets its LDOs set. */
+ 	ret = pmic_get("pfuze100@8", &dev);
+ 	if (!ret) {
+ 		dev_id = pmic_reg_read(dev, PFUZE100_DEVICEID);
+ 		if (dev_id == 0x30) {
+ 			printf("PMIC:  PFUZE3000 DEV_ID=0x%x REV_ID=0x%x\n",
+ 			       dev_id, pmic_reg_read(dev, PFUZE100_REVID));
++			pfuze3000_init_ldos(dev);
+ 			return 0;
+ 		}
+ 	}
+-- 
+2.25.1
+
