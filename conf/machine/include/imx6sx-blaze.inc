@@ -23,3 +23,6 @@ UBOOT_BINARY_OTA:imx6sx-blaze = "u-boot.imx"
 # without them the driver falls back to built-in defaults.
 MACHINE_FEATURES += "wifi usbhost usbgadget"
 MACHINE_EXTRA_RRECOMMENDS:append = " linux-firmware-wl18xx wl18xx-conf"
+
+# Brings can0 up at 500 kbit/s once the interface exists; see can0-up.service.
+MACHINE_EXTRA_RRECOMMENDS:append = " can0-up"

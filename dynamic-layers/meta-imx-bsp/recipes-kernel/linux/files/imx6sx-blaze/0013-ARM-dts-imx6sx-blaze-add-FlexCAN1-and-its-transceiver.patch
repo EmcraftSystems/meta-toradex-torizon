@@ -1,0 +1,80 @@
+From 2a22dddbcb42b4565c199e0ff1faaefe543c2cf6 Mon Sep 17 00:00:00 2001
+From: Dmitry Starchenko <dmitry.starchenko@emcraft.com>
+Date: Thu, 15 Oct 2026 20:43:08 +0200
+Subject: [PATCH] ARM: dts: imx6sx-blaze: add FlexCAN1 and its transceiver
+
+FlexCAN1 on the QSPI1B_DQS and QSPI1A_SS1_B pads, with the transceiver's
+standby pin on GPIO4_IO20 as the xceiver supply: standby is high, so the
+fixed regulator is active low and enabling it drives the pin low.
+
+Upstream-Status: Inappropriate [board-specific]
+Signed-off-by: Dmitry Starchenko <dmitry.starchenko@emcraft.com>
+---
+ arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts | 37 ++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+diff --git a/arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts b/arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts
+index f10da2bf4f227..a054450aeccee 100644
+--- a/arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts
++++ b/arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts
+@@ -109,6 +109,22 @@
+ 		startup-delay-us = <50000>;
+ 	};
+ 
++	/*
++	 * The CAN transceiver's standby pin, on GPIO4_IO20, is low for normal
++	 * operation: enabling the supply drives it low. The FlexCAN driver
++	 * enables it when the interface goes up and disables it when it goes
++	 * down.
++	 */
++	reg_can_xcvr: regulator-can-xcvr {
++		compatible = "regulator-fixed";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pinctrl_can_xcvr_3v3>;
++		regulator-name = "CAN XCVR";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		gpio = <&gpio4 20 GPIO_ACTIVE_LOW>;
++	};
++
+ 	/* The SD socket's 3V0 is switched on GPIO2_11, enable active high. */
+ 	vcc_sd3: regulator-vcc-sd3 {
+ 		compatible = "regulator-fixed";
+@@ -347,6 +363,13 @@
+ };
+ 
+ /* The SNVS domain has no backup supply on this board. */
++&flexcan1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_flexcan1>;
++	xceiver-supply = <&reg_can_xcvr>;
++	status = "okay";
++};
++
+ &snvs_rtc {
+ 	status = "disabled";
+ };
+@@ -662,6 +685,20 @@
+ 			MX6SX_PAD_KEY_ROW0__GPIO2_IO_15		0x80000000
+ 		>;
+ 	};
++
++	pinctrl_flexcan1: flexcan1grp {
++		fsl,pins = <
++			MX6SX_PAD_QSPI1B_DQS__CAN1_TX		0x1b020
++			MX6SX_PAD_QSPI1A_SS1_B__CAN1_RX		0x1b020
++		>;
++	};
++
++	pinctrl_can_xcvr_3v3: can-xcvr3v3grp {
++		fsl,pins = <
++			MX6SX_PAD_QSPI1A_DQS__GPIO4_IO_20	0x80000000
++		>;
++	};
++
+ 	pinctrl_usb_otg1: usbotg1grp {
+ 		fsl,pins = <
+ 			MX6SX_PAD_GPIO1_IO09__GPIO1_IO_9	0x10b0
+-- 
+2.25.1
+

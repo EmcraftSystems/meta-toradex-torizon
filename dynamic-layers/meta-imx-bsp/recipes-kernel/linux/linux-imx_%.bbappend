@@ -30,9 +30,11 @@ SRC_URI:append:imx6sx-blaze = " \
     file://0007-ARM-dts-imx6sx-blaze-add-the-LVDS-display.patch \
     file://0008-ARM-dts-imx6sx-blaze-add-the-panel-s-touch-controller.patch \
     file://0009-ARM-dts-imx6sx-blaze-add-the-10.1-panel-variant.patch \
+    file://0013-ARM-dts-imx6sx-blaze-add-FlexCAN1-and-its-transceiver.patch \
     file://rtc.cfg \
     file://display.cfg \
     file://usb-serial.cfg \
+    file://can.cfg \
 "
 
-DELTA_KERNEL_DEFCONFIG:append:imx6sx-blaze = " rtc.cfg display.cfg usb-serial.cfg"
+DELTA_KERNEL_DEFCONFIG:append:imx6sx-blaze = " rtc.cfg display.cfg usb-serial.cfg can.cfg"
