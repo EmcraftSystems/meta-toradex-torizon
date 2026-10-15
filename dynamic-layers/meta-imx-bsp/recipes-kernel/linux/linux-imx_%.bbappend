@@ -32,6 +32,7 @@ SRC_URI:append:imx6sx-blaze = " \
     file://0009-ARM-dts-imx6sx-blaze-add-the-10.1-panel-variant.patch \
     file://0010-ASoC-codecs-add-the-TI-TAS5756M-amplifier-driver.patch \
     file://0011-ARM-dts-imx6sx-blaze-add-the-TAS5756M-audio.patch \
+    file://0012-ARM-dts-imx6sx-blaze-enable-RS-485-on-UART1.patch \
     file://0014-ARM-dts-imx6sx-blaze-add-the-temperature-sensor-ADCs.patch \
     file://rtc.cfg \
     file://display.cfg \
