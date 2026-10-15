@@ -1,0 +1,335 @@
+From 6de6b9ba674b0061490e5f8fe75b0282c3a16075 Mon Sep 17 00:00:00 2001
+From: Dmitry Starchenko <dmitry.starchenko@emcraft.com>
+Date: Thu, 15 Oct 2026 13:18:49 +0200
+Subject: [PATCH 09/10] ASoC: codecs: add the TI TAS5756M amplifier driver
+
+The i.MX6SoloX Blaze board feeds a TAS5756M from SSI2 and plays one speaker
+through it. The board's existing image carries an out-of-tree driver for the
+part and a machine driver; this ports the codec to 6.6 with its mixer
+controls and tuned register state, and leaves the machine side to
+simple-audio-card.
+
+The chip is addressed through a paged regmap (page N at 0x100 * (N + 1)),
+which also fixes the existing driver's Analog Playback Volume: its address
+was truncated by an 8-bit regmap to the power-down register.
+
+Upstream-Status: Inappropriate [board-specific; mainline pcm512x supports the part from 6.7 with different controls]
+Signed-off-by: Dmitry Starchenko <dmitry.starchenko@emcraft.com>
+---
+ sound/soc/codecs/Kconfig   |   9 ++
+ sound/soc/codecs/Makefile  |   2 +
+ sound/soc/codecs/tas5756.c | 255 +++++++++++++++++++++++++++++++++++++
+ 3 files changed, 266 insertions(+)
+ create mode 100644 sound/soc/codecs/tas5756.c
+
+diff --git a/sound/soc/codecs/Kconfig b/sound/soc/codecs/Kconfig
+index c8564857a..0f6b6c39f 100644
+--- a/sound/soc/codecs/Kconfig
++++ b/sound/soc/codecs/Kconfig
+@@ -247,6 +247,7 @@ config SND_SOC_ALL_CODECS
+ 	imply SND_SOC_TAS5086
+ 	imply SND_SOC_TAS571X
+ 	imply SND_SOC_TAS5720
++	imply SND_SOC_TAS5756
+ 	imply SND_SOC_TAS6424
+ 	imply SND_SOC_TDA7419
+ 	imply SND_SOC_TFA9879
+@@ -1824,6 +1825,14 @@ config SND_SOC_TAS5720
+ 	  Enable support for Texas Instruments TAS5720L/M high-efficiency mono
+ 	  Class-D audio power amplifiers.
+ 
++config SND_SOC_TAS5756
++	tristate "Texas Instruments TAS5756M Mono Audio amplifier"
++	depends on I2C
++	help
++	  Enable support for the Texas Instruments TAS5756M Class-D audio
++	  amplifier, as wired on the i.MX 6SoloX Blaze board with the controls
++	  its existing image exposes.
++
+ config SND_SOC_TAS5805M
+ 	tristate "Texas Instruments TAS5805M speaker amplifier"
+ 	depends on I2C
+diff --git a/sound/soc/codecs/Makefile b/sound/soc/codecs/Makefile
+index 0f2e0f016..cc5b9b99f 100644
+--- a/sound/soc/codecs/Makefile
++++ b/sound/soc/codecs/Makefile
+@@ -273,6 +273,7 @@ snd-soc-sti-sas-objs := sti-sas.o
+ snd-soc-tas5086-objs := tas5086.o
+ snd-soc-tas571x-objs := tas571x.o
+ snd-soc-tas5720-objs := tas5720.o
++snd-soc-tas5756-objs := tas5756.o
+ snd-soc-tas5805m-objs := tas5805m.o
+ snd-soc-tas6424-objs := tas6424.o
+ snd-soc-tda7419-objs := tda7419.o
+@@ -663,6 +664,7 @@ obj-$(CONFIG_SND_SOC_TAS2781_I2C)	+= snd-soc-tas2781-i2c.o
+ obj-$(CONFIG_SND_SOC_TAS5086)	+= snd-soc-tas5086.o
+ obj-$(CONFIG_SND_SOC_TAS571X)	+= snd-soc-tas571x.o
+ obj-$(CONFIG_SND_SOC_TAS5720)	+= snd-soc-tas5720.o
++obj-$(CONFIG_SND_SOC_TAS5756)	+= snd-soc-tas5756.o
+ obj-$(CONFIG_SND_SOC_TAS5805M)	+= snd-soc-tas5805m.o
+ obj-$(CONFIG_SND_SOC_TAS6424)	+= snd-soc-tas6424.o
+ obj-$(CONFIG_SND_SOC_TDA7419)	+= snd-soc-tda7419.o
+diff --git a/sound/soc/codecs/tas5756.c b/sound/soc/codecs/tas5756.c
+new file mode 100644
+index 000000000..4272de802
+--- /dev/null
++++ b/sound/soc/codecs/tas5756.c
+@@ -0,0 +1,255 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Driver for the TI TAS5756M audio amplifier on the i.MX 6SoloX Blaze board.
++ *
++ * Ported to 6.6 from the out-of-tree driver in the board's existing Yocto
++ * Kirkstone BSP (Andy Liu, TI, GPL-2.0), keeping its controls and its tuned
++ * register state, and replacing its machine driver with simple-audio-card.
++ * Mainline pcm512x supports this part from 6.7, with different controls; drop
++ * this driver when moving to a kernel that has it and the controls can change.
++ *
++ * Only the right I2S frame is played: the board feeds the amplifier from
++ * DAC_OUTA alone, which carries the right channel by default.
++ */
++
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/pm.h>
++#include <linux/regmap.h>
++#include <sound/pcm.h>
++#include <sound/soc.h>
++#include <sound/tlv.h>
++
++/*
++ * The chip has 256 registers per page. They are presented as a flat map, page
++ * N starting at 0x100 * (N + 1), with raw addresses below 0x100 left for the
++ * page selector, so one regmap access never lands on the wrong page.
++ */
++#define TAS5756_PAGE			0
++#define TAS5756_VIRT_BASE		0x100
++#define TAS5756_PAGE_LEN		0x100
++#define TAS5756_PAGE_BASE(n)		(TAS5756_VIRT_BASE + TAS5756_PAGE_LEN * (n))
++#define TAS5756_MAX_REGISTER		(TAS5756_PAGE_BASE(44) + 0xff)
++
++#define TAS5756_RESET			(TAS5756_PAGE_BASE(0) + 1)
++#define TAS5756_POWER			(TAS5756_PAGE_BASE(0) + 2)
++#define TAS5756_MUTE			(TAS5756_PAGE_BASE(0) + 3)
++#define TAS5756_GPIO_EN			(TAS5756_PAGE_BASE(0) + 8)
++#define TAS5756_PLL_REF			(TAS5756_PAGE_BASE(0) + 13)
++#define TAS5756_ERROR_DETECT		(TAS5756_PAGE_BASE(0) + 37)
++#define TAS5756_DSP_PROGRAM		(TAS5756_PAGE_BASE(0) + 43)
++#define TAS5756_DIGITAL_VOLUME_L	(TAS5756_PAGE_BASE(0) + 61)
++#define TAS5756_DIGITAL_VOLUME_R	(TAS5756_PAGE_BASE(0) + 62)
++#define TAS5756_ANALOG_GAIN		(TAS5756_PAGE_BASE(1) + 2)
++#define TAS5756_ANALOG_UNDOC		(TAS5756_PAGE_BASE(1) + 3)
++#define TAS5756_CRAM_CTRL		(TAS5756_PAGE_BASE(44) + 1)
++
++#define TAS5756_RQST			BIT(4)
++
++#define TAS5756_RATES			SNDRV_PCM_RATE_48000
++#define TAS5756_FORMATS			(SNDRV_PCM_FMTBIT_S16_LE | \
++					 SNDRV_PCM_FMTBIT_S20_3LE | \
++					 SNDRV_PCM_FMTBIT_S24_LE | \
++					 SNDRV_PCM_FMTBIT_S32_LE)
++
++struct tas5756_priv {
++	struct regmap *regmap;
++	struct gpio_desc *mute_gpio;
++};
++
++/* The register state the board's existing image programs at probe. */
++static const struct reg_sequence tas5756_init[] = {
++	{ TAS5756_POWER,		0x11 },	/* standby and power down */
++	{ TAS5756_RESET,		0x11 },	/* reset modules and registers */
++	{ TAS5756_MUTE,			0x11 },
++	{ TAS5756_POWER,		0x10 },	/* power up, stay in standby */
++	{ TAS5756_DSP_PROGRAM,		0x01 },
++	{ TAS5756_DIGITAL_VOLUME_L,	0x43 },	/* -9.5 dB, the tuned ceiling */
++	{ TAS5756_DIGITAL_VOLUME_R,	0x43 },
++	{ TAS5756_CRAM_CTRL,		0x00 },
++	{ TAS5756_ANALOG_UNDOC,		0x04 },	/* undocumented, as shipped */
++	{ TAS5756_PLL_REF,		0x10 },	/* PLL reference is BCK */
++	{ TAS5756_ERROR_DETECT,		0x08 },	/* ignore a missing MCLK */
++	{ TAS5756_GPIO_EN,		0x10 },
++	{ TAS5756_POWER,		0x00 },	/* leave standby */
++	{ TAS5756_MUTE,			0x00 },
++};
++
++static const DECLARE_TLV_DB_SCALE(digital_tlv, -10350, 50, 1);
++static const DECLARE_TLV_DB_SCALE(analog_tlv, -600, 600, 0);
++
++/*
++ * Digital volume (P0-R61/62, 0.5 dB steps): register 255..67 is control
++ * 0..188, so 100 % is the -9.5 dB ceiling. The analog gain is P1-R2 as in the
++ * PCM512x family this part is built on (bit set = -6 dB); the TAS5756M
++ * datasheet does not document it, and the amplifier's own gain is set by the
++ * SPK_GAIN/FREQ pin, so its effect is a bench check.
++ */
++static const struct snd_kcontrol_new tas5756_controls[] = {
++	SOC_SINGLE_RANGE_TLV("Digital Playback Volume", TAS5756_DIGITAL_VOLUME_R,
++			     0, 67, 255, 1, digital_tlv),
++	SOC_SINGLE_TLV("Analog Playback Volume", TAS5756_ANALOG_GAIN,
++		       0, 1, 1, analog_tlv),
++	SOC_SINGLE("Speaker Switch", TAS5756_MUTE, 0, 1, 1),
++};
++
++static int tas5756_set_bias_level(struct snd_soc_component *component,
++				  enum snd_soc_bias_level level)
++{
++	switch (level) {
++	case SND_SOC_BIAS_STANDBY:
++		return snd_soc_component_update_bits(component, TAS5756_POWER,
++						     TAS5756_RQST, 0);
++	case SND_SOC_BIAS_OFF:
++		return snd_soc_component_update_bits(component, TAS5756_POWER,
++						     TAS5756_RQST, TAS5756_RQST);
++	default:
++		return 0;
++	}
++}
++
++static const struct snd_soc_component_driver tas5756_component = {
++	.controls		= tas5756_controls,
++	.num_controls		= ARRAY_SIZE(tas5756_controls),
++	.set_bias_level		= tas5756_set_bias_level,
++	.idle_bias_on		= false,
++};
++
++/* The amplifier's own mute pin, active low, follows the stream. */
++static int tas5756_mute_stream(struct snd_soc_dai *dai, int mute, int direction)
++{
++	struct tas5756_priv *priv = snd_soc_component_get_drvdata(dai->component);
++
++	gpiod_set_value_cansleep(priv->mute_gpio, !mute);
++
++	return 0;
++}
++
++static const struct snd_soc_dai_ops tas5756_dai_ops = {
++	.mute_stream		= tas5756_mute_stream,
++	.no_capture_mute	= 1,
++};
++
++static struct snd_soc_dai_driver tas5756_dai = {
++	.name = "tas5756",
++	.playback = {
++		.stream_name	= "Playback",
++		.channels_min	= 2,
++		.channels_max	= 2,
++		.rates		= TAS5756_RATES,
++		.formats	= TAS5756_FORMATS,
++	},
++	.ops = &tas5756_dai_ops,
++};
++
++static const struct regmap_range_cfg tas5756_range = {
++	.name = "Pages",
++	.range_min = TAS5756_VIRT_BASE,
++	.range_max = TAS5756_MAX_REGISTER,
++	.selector_reg = TAS5756_PAGE,
++	.selector_mask = 0xff,
++	.window_start = 0,
++	.window_len = TAS5756_PAGE_LEN,
++};
++
++/*
++ * Raw addresses are the page selector: read it from the chip, never from the
++ * cache, or a cached page number can disagree with the chip's.
++ */
++static bool tas5756_volatile(struct device *dev, unsigned int reg)
++{
++	return reg < 0xff;
++}
++
++static const struct regmap_config tas5756_regmap = {
++	.reg_bits	= 8,
++	.val_bits	= 8,
++	.volatile_reg	= tas5756_volatile,
++	.ranges		= &tas5756_range,
++	.num_ranges	= 1,
++	.max_register	= TAS5756_MAX_REGISTER,
++	.cache_type	= REGCACHE_RBTREE,
++};
++
++static int tas5756_i2c_probe(struct i2c_client *i2c)
++{
++	struct device *dev = &i2c->dev;
++	struct tas5756_priv *priv;
++	int ret;
++
++	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
++	if (!priv)
++		return -ENOMEM;
++
++	priv->regmap = devm_regmap_init_i2c(i2c, &tas5756_regmap);
++	if (IS_ERR(priv->regmap))
++		return PTR_ERR(priv->regmap);
++
++	priv->mute_gpio = devm_gpiod_get(dev, "amp-mute", GPIOD_OUT_LOW);
++	if (IS_ERR(priv->mute_gpio))
++		return dev_err_probe(dev, PTR_ERR(priv->mute_gpio),
++				     "no amp-mute gpio\n");
++
++	i2c_set_clientdata(i2c, priv);
++
++	ret = regmap_register_patch(priv->regmap, tas5756_init,
++				    ARRAY_SIZE(tas5756_init));
++	if (ret)
++		return dev_err_probe(dev, ret, "init sequence failed\n");
++
++	return devm_snd_soc_register_component(dev, &tas5756_component,
++					       &tas5756_dai, 1);
++}
++
++static int __maybe_unused tas5756_suspend(struct device *dev)
++{
++	struct tas5756_priv *priv = dev_get_drvdata(dev);
++
++	regcache_cache_only(priv->regmap, true);
++	regcache_mark_dirty(priv->regmap);
++
++	return 0;
++}
++
++static int __maybe_unused tas5756_resume(struct device *dev)
++{
++	struct tas5756_priv *priv = dev_get_drvdata(dev);
++
++	regcache_cache_only(priv->regmap, false);
++
++	return regcache_sync(priv->regmap);
++}
++
++static const struct dev_pm_ops tas5756_pm = {
++	SET_SYSTEM_SLEEP_PM_OPS(tas5756_suspend, tas5756_resume)
++};
++
++static const struct i2c_device_id tas5756_i2c_id[] = {
++	{ "tas5756" },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, tas5756_i2c_id);
++
++static const struct of_device_id tas5756_of_match[] = {
++	{ .compatible = "ti,tas5756" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, tas5756_of_match);
++
++static struct i2c_driver tas5756_i2c_driver = {
++	.probe		= tas5756_i2c_probe,
++	.id_table	= tas5756_i2c_id,
++	.driver		= {
++		.name		= "tas5756",
++		.of_match_table	= tas5756_of_match,
++		.pm		= &tas5756_pm,
++	},
++};
++module_i2c_driver(tas5756_i2c_driver);
++
++MODULE_DESCRIPTION("TAS5756M audio amplifier driver");
++MODULE_AUTHOR("Andy Liu <andy-liu@ti.com>");
++MODULE_LICENSE("GPL");
+-- 
+2.53.0
+
