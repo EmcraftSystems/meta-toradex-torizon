@@ -23,3 +23,6 @@ UBOOT_BINARY_OTA:imx6sx-blaze = "u-boot.imx"
 # without them the driver falls back to built-in defaults.
 MACHINE_FEATURES += "wifi usbhost usbgadget"
 MACHINE_EXTRA_RRECOMMENDS:append = " linux-firmware-wl18xx wl18xx-conf"
+
+# The application sets the audio levels with amixer; the image has no ALSA userspace otherwise.
+MACHINE_EXTRA_RRECOMMENDS:append = " alsa-utils"
