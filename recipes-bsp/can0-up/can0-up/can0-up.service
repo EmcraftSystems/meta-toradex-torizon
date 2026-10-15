@@ -1,0 +1,17 @@
+[Unit]
+Description=Bring up can0
+BindsTo=sys-subsystem-net-devices-can0.device
+After=sys-subsystem-net-devices-can0.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# The default bitrate; /etc/default/can0 or a unit override changes it.
+Environment=CAN_BITRATE=500000
+EnvironmentFile=-/etc/default/can0
+ExecStart=/sbin/ip link set can0 type can bitrate ${CAN_BITRATE}
+ExecStart=/sbin/ip link set can0 txqueuelen 1000
+ExecStart=/sbin/ip link set can0 up
+
+[Install]
+WantedBy=multi-user.target
