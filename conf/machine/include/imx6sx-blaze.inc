@@ -26,3 +26,6 @@ MACHINE_EXTRA_RRECOMMENDS:append = " linux-firmware-wl18xx wl18xx-conf"
 
 # The application sets the audio levels with amixer; the image has no ALSA userspace otherwise.
 MACHINE_EXTRA_RRECOMMENDS:append = " alsa-utils"
+# Brings can0 up at 500 kbit/s once the interface exists; see can0-up.service.
+# can-utils and can-utils-isotp: the SocketCAN and ISO-TP command-line tools.
+MACHINE_EXTRA_RRECOMMENDS:append = " can0-up can-utils can-utils-isotp"
