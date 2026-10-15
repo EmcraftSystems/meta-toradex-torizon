@@ -1,0 +1,92 @@
+From 69785783091b7905f6ac04c981190eb836100f19 Mon Sep 17 00:00:00 2001
+From: Dmitry Starchenko <dmitry.starchenko@emcraft.com>
+Date: Thu, 15 Oct 2026 20:43:06 +0200
+Subject: [PATCH] ARM: dts: imx6sx-blaze: enable RS-485 on UART1
+
+UART1 is the RS-485 port. The transceiver's driver-enable is on the UART's
+CTS_B pad, because RTS and CTS are swapped on this board, so the pad is muxed
+as CTS_B and the UART runs its RS-485 handling from boot, RTS high while
+sending. UART1 needs uart-has-rtscts, or the i.MX driver offers no RS-485 at
+all. DMA is removed, as in the existing image.
+
+Two lines the existing image's bootloader set are held by the device tree:
+RS485A_H_F#_SEL high selects half duplex, RS485A_RE_N low enables the
+receive path.
+
+Upstream-Status: Inappropriate [board-specific]
+Signed-off-by: Dmitry Starchenko <dmitry.starchenko@emcraft.com>
+---
+ arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts | 44 ++++++++++++++++++++++
+ 1 file changed, 44 insertions(+)
+
+diff --git a/arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts b/arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts
+index f10da2bf4f227..7f2dd81ddcd80 100644
+--- a/arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts
++++ b/arch/arm/boot/dts/nxp/imx/imx6sx-blaze.dts
+@@ -164,12 +164,46 @@
+ 	};
+ };
+ 
++/*
++ * UART1 is the RS-485 port. The transceiver's DE is on the UART's CTS_B pad
++ * (RTS and CTS are swapped on this board), so the pad is muxed as CTS_B and
++ * the port runs in DCE mode with the driver's RS-485 handling driving it.
++ * DMA stays off, as in the existing image.
++ */
++&uart1 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&pinctrl_uart1>;
++	uart-has-rtscts;
++	linux,rs485-enabled-at-boot-time;
++	/delete-property/ dmas;
++	/delete-property/ dma-names;
++	status = "okay";
++};
++
+ &uart3 {
+ 	pinctrl-names = "default";
+ 	pinctrl-0 = <&pinctrl_uart3>;
+ 	status = "okay";
+ };
+ 
++&gpio2 {
++	/* RS485A_H_F#_SEL: high is half duplex, the receiver pair is off. */
++	rs485-half-duplex-hog {
++		gpio-hog;
++		gpios = <0 GPIO_ACTIVE_HIGH>;
++		output-high;
++		line-name = "RS485A_H_F_SEL";
++	};
++
++	/* RS485A_RE_N: low passes the receive line to the UART. */
++	rs485-re-hog {
++		gpio-hog;
++		gpios = <8 GPIO_ACTIVE_HIGH>;
++		output-low;
++		line-name = "RS485A_RE_N";
++	};
++};
++
+ &gpio5 {
+ 	/* panel-lvds holds reset-gpios asserted from probe on, so reset is a hog. */
+ 	lvds-reset-hog {
+@@ -518,6 +552,16 @@
+ };
+ 
+ &iomuxc {
++	pinctrl_uart1: uart1grp {
++		fsl,pins = <
++			MX6SX_PAD_ENET2_CRS__UART1_TX		0x1b0b1
++			MX6SX_PAD_ENET2_COL__UART1_RX		0x1b0b1
++			MX6SX_PAD_ENET2_TX_CLK__UART1_CTS_B	0x1b0b1
++			MX6SX_PAD_ENET2_RX_CLK__GPIO2_IO_8	0x80000000
++			MX6SX_PAD_ENET1_COL__GPIO2_IO_0		0x80000000
++		>;
++	};
++
+ 	pinctrl_uart3: uart3grp {
+ 		fsl,pins = <
+ 			MX6SX_PAD_QSPI1B_SS0_B__UART3_DCE_TX	0x1b0b1
+-- 
+2.25.1
+
