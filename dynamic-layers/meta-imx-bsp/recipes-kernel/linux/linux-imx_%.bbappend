@@ -30,11 +30,14 @@ SRC_URI:append:imx6sx-blaze = " \
     file://0007-ARM-dts-imx6sx-blaze-add-the-LVDS-display.patch \
     file://0008-ARM-dts-imx6sx-blaze-add-the-panel-s-touch-controller.patch \
     file://0009-ARM-dts-imx6sx-blaze-add-the-10.1-panel-variant.patch \
+    file://0010-ASoC-codecs-add-the-TI-TAS5756M-amplifier-driver.patch \
+    file://0011-ARM-dts-imx6sx-blaze-add-the-TAS5756M-audio.patch \
     file://0014-ARM-dts-imx6sx-blaze-add-the-temperature-sensor-ADCs.patch \
     file://rtc.cfg \
     file://display.cfg \
     file://usb-serial.cfg \
     file://sensors.cfg \
+    file://audio.cfg \
 "
 
-DELTA_KERNEL_DEFCONFIG:append:imx6sx-blaze = " rtc.cfg display.cfg usb-serial.cfg sensors.cfg"
+DELTA_KERNEL_DEFCONFIG:append:imx6sx-blaze = " rtc.cfg display.cfg usb-serial.cfg sensors.cfg audio.cfg"
