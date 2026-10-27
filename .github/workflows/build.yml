@@ -16,7 +16,7 @@ permissions:
 # One build at a time on the shared CI tree (the single runner already
 # serialises, but make the intent explicit and cancel superseded runs).
 concurrency:
-  group: fra2-imx6sx-ci
+  group: fra2-imx6sx-secure-ci
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
-          TREE=/mnt/volume_fra1_01/torizon/imx6sx-ci
+          TREE=/mnt/volume_fra1_01/torizon/imx6sx-secure-ci
           LAYER="$TREE/layers/meta-toradex-torizon"
           MACHINE=imx6sxsabresd
           BUILDDIR=build-imx6sxsabresd
