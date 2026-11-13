@@ -24,6 +24,13 @@ require recipes-kernel/linux/linux-torizon.inc
 # the fragments, leaving do_copy_defconfig with nothing to do.
 KBUILD_DEFCONFIG:lec-mtk1200 = ""
 
+# meta-toradex-security's dm-crypt, Trusted Keys and key-backend fragments.
+# include, not require: this layer does not depend on meta-toradex-security, and
+# a tdx-encrypted build without it fails the read-back below.
+include recipes-kernel/linux/linux-sec-features.inc
+TDX_ENC_KCONFIG_CHECK = ""
+TDX_ENC_KCONFIG_CHECK:tdx-encrypted = "1"
+
 # Everything here hangs off lec-mtk1200, the vendor's own override: if it is
 # renamed, the KBUILD_DEFCONFIG override, this task disable, the fragment
 # exclusions and the read-back below all disappear together and the build stays
@@ -71,6 +78,19 @@ do_configure:append:lec-mtk1200() {
     done
     if [ -n "$missing" ]; then
         bbfatal "torizon.cfg did not reach the built .config:$missing"
+    fi
+
+    # A tdx-encrypted image whose kernel lacks these fails only at first boot.
+    if [ -n "${TDX_ENC_KCONFIG_CHECK}" ]; then
+        for sym in CONFIG_DM_CRYPT CONFIG_TRUSTED_KEYS; do
+            grep -qE "^$sym=(y|m)$" ${B}/.config || missing="$missing $sym"
+        done
+        if [ "${TDX_ENC_KEY_BACKEND}" = "tpm" ]; then
+            grep -qxF CONFIG_TRUSTED_KEYS_TPM=y ${B}/.config || missing="$missing CONFIG_TRUSTED_KEYS_TPM"
+        fi
+        if [ -n "$missing" ]; then
+            bbfatal "the security fragments did not reach the built .config:$missing"
+        fi
     fi
 
     # "# CONFIG_X is not set" is a request to disable, not a comment.

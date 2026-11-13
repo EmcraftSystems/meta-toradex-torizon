@@ -37,6 +37,13 @@ IMAGE_INSTALL:append = "${@bb.utils.contains('BBFILE_COLLECTIONS', 'tpm-layer', 
 # converters alongside the image.
 EXTRA_IMAGEDEPENDS:append = " genio2img-tools"
 
+# tdx-encrypted builds: the encrypted data partition is created on first boot on
+# the on-module UFS, where resize-helper would otherwise grow the rootfs over the
+# whole disk, and container storage moves onto it.
+DATA_PARTITION_ID_PATH = "platform-11270000.ufshci-scsi-*"
+RESIZE_HELPER:tdx-encrypted = ""
+IMAGE_INSTALL:append:tdx-encrypted = " data-partition docker-encdata"
+
 # RTL8821AU USB Wi-Fi driver (recipes-kernel/rtw88); named by PN since
 # only the kernel recipe declares PACKAGES_DYNAMIC for kernel-module-*.
 IMAGE_INSTALL:append = " rtw88"
