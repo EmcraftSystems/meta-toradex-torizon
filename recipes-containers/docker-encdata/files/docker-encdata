@@ -1,0 +1,44 @@
+#!/bin/sh
+# Keep Docker's storage on the encrypted data partition: move the image's
+# pre-provisioned /var/lib/docker there once, then bind-mount it on every boot.
+set -e
+
+MNT=@MOUNTPOINT@
+MAPPER=/dev/mapper/encdata
+DOCKER=/var/lib/docker
+
+src=$(findmnt -no SOURCE "$MNT" || true)
+if [ "$src" != "$MAPPER" ]; then
+	echo "E: $MNT is mounted from '$src', not $MAPPER; refusing to start container storage" >&2
+	exit 1
+fi
+
+if [ ! -e "$MNT/.docker-migrated" ]; then
+	rm -rf "$MNT/docker" "$MNT/docker.tmp"
+	mkdir "$MNT/docker.tmp"
+	if [ -d "$DOCKER" ]; then
+		cp -a "$DOCKER/." "$MNT/docker.tmp/"
+	fi
+	sync
+	mv "$MNT/docker.tmp" "$MNT/docker"
+	touch "$MNT/.docker-migrated"
+	sync
+	# Only once the encrypted copy is committed; an interrupted run starts over.
+	if [ -d "$DOCKER" ]; then
+		find "$DOCKER" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+	fi
+fi
+
+mkdir -p "$DOCKER"
+cur=$(findmnt -no SOURCE "$DOCKER" || true)
+case "$cur" in
+"")
+	mount --bind "$MNT/docker" "$DOCKER"
+	;;
+"$MAPPER[/docker]")
+	;;
+*)
+	echo "E: $DOCKER is already mounted from '$cur'" >&2
+	exit 1
+	;;
+esac

@@ -1,0 +1,13 @@
+[Unit]
+Description=Container storage on the encrypted data partition
+Requires=tdx-enc-handler.service
+After=tdx-enc-handler.service
+Before=docker.service containerd.service boot-complete.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=@SBINDIR@/docker-encdata
+
+[Install]
+RequiredBy=boot-complete.target
