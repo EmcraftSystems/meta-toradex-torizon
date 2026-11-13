@@ -30,6 +30,8 @@ OSTREE_KERNEL_ARGS:sota:lec-mtk1200 = "logo.nologo vt.global_cursor_default=0 pl
 
 # The board carries a TPM2.0.
 DISTRO_FEATURES:append = " tpm2"
+# tpm2-tools comes from meta-tpm, which the manifest does not include.
+IMAGE_INSTALL:append = "${@bb.utils.contains('BBFILE_COLLECTIONS', 'tpm-layer', ' tpm2-tools', '', d)}"
 
 # Build and deploy host-side genio2img/img2genio torizoncore-builder
 # converters alongside the image.
