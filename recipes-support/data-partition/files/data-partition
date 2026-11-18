@@ -1,0 +1,55 @@
+#!/bin/sh
+# Split the on-module disk on first boot: rootfs ends at @ROOTFS_END_MIB@ MiB and
+# the rest becomes a partition named "data". Runs on every boot and changes
+# nothing once "data" exists; never shrinks rootfs.
+set -e
+
+. @DATADIR@/resize-helper/gpt-functions
+
+ID_PATH_GLOB='@ID_PATH@'
+ROOTFS_END_MIB=@ROOTFS_END_MIB@
+
+root_part=
+for sys in /sys/class/block/*; do
+	[ -e "$sys/partition" ] || continue
+	props=$(udevadm info --query=property --path="$sys")
+	path=$(echo "$props" | sed -n 's/^ID_PATH=//p')
+	name=$(echo "$props" | sed -n 's/^ID_PART_ENTRY_NAME=//p')
+	case "$path" in
+	$ID_PATH_GLOB) ;;
+	*) continue ;;
+	esac
+	[ "$name" = rootfs ] || continue
+	if [ -n "$root_part" ]; then
+		echo "E: more than one partition named rootfs on $ID_PATH_GLOB" >&2
+		exit 1
+	fi
+	root_part=/dev/${sys##*/}
+	disk=/dev/$(basename "$(readlink -f "$sys/..")")
+	num=$(cat "$sys/partition")
+done
+if [ -z "$root_part" ]; then
+	echo "E: no partition named rootfs on $ID_PATH_GLOB" >&2
+	exit 1
+fi
+
+for n in $(sgdisk --print "$disk" | awk '$1 ~ /^[0-9]+$/ {print $1}'); do
+	if sgdisk --info="$n" "$disk" | grep -qx "Partition name: 'data'"; then
+		# An interrupted first run may have left the filesystem short of its partition.
+		resize2fs "$root_part"
+		exit 0
+	fi
+done
+
+end=$((ROOTFS_END_MIB * 1048576 / $(blockdev --getss "$disk") - 1))
+cur_end=$(sgdisk --info="$num" "$disk" | awk '/^Last sector:/ {print $3}')
+if [ "$cur_end" -gt "$end" ]; then
+	echo "E: $root_part ends at sector $cur_end, past $ROOTFS_END_MIB MiB; it is never shrunk, so the data partition needs a factory flash" >&2
+	exit 1
+fi
+
+gpt_recreate_partition "$disk" "$num" "$end"
+sgdisk --new=0:0:0 --change-name=0:data "$disk"
+partx -u "$disk"
+udevadm settle
+resize2fs "$root_part"

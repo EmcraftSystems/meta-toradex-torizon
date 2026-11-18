@@ -6,6 +6,15 @@ udevadm settle
 # create the mountpoint base directory (if not created yet)
 mkdir -p /var/rootdirs/media
 
+# Ignore-list entries may be symlinks (e.g. /dev/disk/by-*), so compare them
+# resolved; fdisk lists kernel names.
+ignored() {
+    while read -r entry; do
+        [ -n "$entry" ] && [ "$(readlink -f "$entry")" = "$1" ] && return 0
+    done < /etc/usermount/ignorelist
+    return 1
+}
+
 # use fdisk to get all available formatted partitions
 for dev in `fdisk -l 2>/dev/null | grep -o "^/dev/[[:alnum:]]*"`; do
     case "$(basename $dev)" in
@@ -18,7 +27,7 @@ for dev in `fdisk -l 2>/dev/null | grep -o "^/dev/[[:alnum:]]*"`; do
             fi
 
             # do not mount if the partition is in the ignore list
-            if grep -xqs ${dev} /etc/usermount/ignorelist; then
+            if [ -r /etc/usermount/ignorelist ] && ignored ${dev}; then
                 echo "Partition $dev is in the ignore list and will not be mounted."
                 continue
             fi

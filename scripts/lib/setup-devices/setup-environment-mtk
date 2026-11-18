@@ -103,6 +103,18 @@ fi
 ln -sf "${_TDX_MANIFESTS}"/README.md README.md
 ln -sf "${_TDX_MANIFESTS}" "${_TDX_OEROOT}"/layers/
 
+# The security layers carry the tdx-encrypted class; add them only when
+# they are checked out, since the manifest does not include them.
+_TDX_SEC_TOP=
+_TDX_SEC_BSP=
+if [ -d "${_TDX_OEROOT}"/layers/meta-toradex-security ] && [ -d "${_TDX_OEROOT}"/layers/meta-security ]; then
+    _TDX_SEC_TOP='  ${OEROOT}/layers/meta-toradex-security \
+  ${OEROOT}/layers/meta-security/meta-tpm \
+'
+    _TDX_SEC_BSP='  ${OEROOT}/layers/meta-security \
+'
+fi
+
 if [ ! -f "conf/bblayers.conf" ]; then
     cat > conf/bblayers.conf <<EOF
 # Torizon
@@ -133,7 +145,7 @@ BASELAYERS ?= " \\
 BSPLAYERS ?= " \\
   \${OEROOT}/layers/meta-yocto/meta-yocto-bsp \\
   \${OEROOT}/layers/meta-yocto/meta-poky \\
-  \${OEROOT}/layers/meta-arm/meta-arm-toolchain \\
+${_TDX_SEC_BSP}  \${OEROOT}/layers/meta-arm/meta-arm-toolchain \\
   \${OEROOT}/layers/meta-arm/meta-arm \\
   \${OEROOT}/layers/meta-clang \\
   \${OEROOT}/layers/meta-mediatek-bsp \\
@@ -146,7 +158,7 @@ EXTRALAYERS ?= ""
 
 BBLAYERS = " \\
   \${OEROOT}/layers/meta-toradex-torizon \\
-  \${BASELAYERS} \\
+${_TDX_SEC_TOP}  \${BASELAYERS} \\
   \${BSPLAYERS} \\
   \${EXTRALAYERS} \\
   \${OEROOT}/layers/openembedded-core/meta \\

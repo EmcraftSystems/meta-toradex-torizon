@@ -1,0 +1,12 @@
+[Unit]
+Description=Create the data partition on the on-module disk
+DefaultDependencies=no
+Wants=systemd-udev-trigger.service
+After=systemd-remount-fs.service systemd-udev-trigger.service
+Before=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/bin/udevadm settle
+ExecStart=@SBINDIR@/data-partition

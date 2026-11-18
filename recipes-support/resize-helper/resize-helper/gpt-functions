@@ -1,0 +1,44 @@
+# GPT helpers shared by resize-helper and data-partition; sourced, not run.
+
+# gpt_recreate_partition DISK NUMBER END
+# Recreate partition NUMBER of DISK at its original first sector, ending at
+# sector END (0 = the last usable sector). sgdisk speaks the disk's logical
+# sector size, so this is correct on 4Kn media. The delete/recreate resets the
+# name, attribute flags, unique GUID and type code, so all four are read first
+# and restored: the attributes carry the legacy-BIOS-bootable flag (WIC
+# --active) that U-Boot's distro_bootcmd scan uses to find the rootfs, and a
+# fresh unique GUID would strand anything referring to the partition by
+# PARTUUID.
+gpt_recreate_partition() {
+	_disk=$1
+	_num=$2
+	_end=$3
+	_info=$(sgdisk --info="$_num" "$_disk") || return 1
+	_start=$(echo "$_info" | awk '/^First sector:/ {print $3}')
+	_attrs=$(echo "$_info" | awk '/^Attribute flags:/ {print $3}')
+	_name=$(echo "$_info" | sed -n "s/^Partition name: '\(.*\)'\$/\1/p")
+	_uuid=$(echo "$_info" | awk '/^Partition unique GUID:/ {print $4}')
+	_type=$(echo "$_info" | awk '/^Partition GUID code:/ {print $4}')
+	# Recreating at an empty or zero start would place the partition at
+	# sgdisk's default offset, not the original, and corrupt its filesystem.
+	case "$_start" in
+	''|0|*[!0-9]*)
+		echo "E: could not read first sector of partition $_num on $_disk" >&2
+		return 1
+		;;
+	esac
+	sgdisk --move-second-header "$_disk" || return 1
+	sgdisk --delete="$_num" --new="$_num:$_start:$_end" "$_disk" || return 1
+	if [ -n "$_name" ]; then
+		sgdisk --change-name="$_num:$_name" "$_disk" || return 1
+	fi
+	if [ -n "$_attrs" ]; then
+		sgdisk --attributes="$_num:=:$_attrs" "$_disk" || return 1
+	fi
+	if [ -n "$_uuid" ]; then
+		sgdisk --partition-guid="$_num:$_uuid" "$_disk" || return 1
+	fi
+	if [ -n "$_type" ]; then
+		sgdisk --typecode="$_num:$_type" "$_disk" || return 1
+	fi
+}

@@ -30,10 +30,19 @@ OSTREE_KERNEL_ARGS:sota:lec-mtk1200 = "logo.nologo vt.global_cursor_default=0 pl
 
 # The board carries a TPM2.0.
 DISTRO_FEATURES:append = " tpm2"
+# tpm2-tools comes from meta-tpm, which the manifest does not include.
+IMAGE_INSTALL:append = "${@bb.utils.contains('BBFILE_COLLECTIONS', 'tpm-layer', ' tpm2-tools', '', d)}"
 
 # Build and deploy host-side genio2img/img2genio torizoncore-builder
 # converters alongside the image.
 EXTRA_IMAGEDEPENDS:append = " genio2img-tools"
+
+# tdx-encrypted builds: the encrypted data partition is created on first boot on
+# the on-module UFS, where resize-helper would otherwise grow the rootfs over the
+# whole disk, and container storage moves onto it.
+DATA_PARTITION_ID_PATH = "platform-11270000.ufshci-scsi-*"
+RESIZE_HELPER:tdx-encrypted = ""
+IMAGE_INSTALL:append:tdx-encrypted = " data-partition docker-encdata"
 
 # RTL8821AU USB Wi-Fi driver (recipes-kernel/rtw88); named by PN since
 # only the kernel recipe declares PACKAGES_DYNAMIC for kernel-module-*.

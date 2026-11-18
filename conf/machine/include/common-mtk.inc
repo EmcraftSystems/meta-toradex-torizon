@@ -72,3 +72,8 @@ WKS_FILE:sota = "torizon-mtk-sota.wks"
 # board-assets, which Torizon does not use.
 BBMASK += "meta-adlink-mtk/recipes-rity/"
 BBMASK += "meta-adlink-mtk/recipes-core/board-assets/"
+
+# meta-toradex-security's optee-client bbappend passes this unconditionally, but
+# only tdx-optee defines it; without a value tee-supplicant would store its REE
+# filesystem under the literal string. Keep optee-client's own default.
+TDX_OPTEE_FS_PARENT_PATH ??= "/var/lib/tee"

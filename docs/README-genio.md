@@ -36,6 +36,14 @@ $ repo init -u https://git.toradex.com/toradex-manifest.git -b scarthgap-7.x.y -
 ```
 $ repo sync
 ```
+6. Only for the encrypted data partition (see _Encrypted Data Partition_):
+   add the security layers, which the manifest does not include:
+```
+$ git clone -b scarthgap https://git.yoctoproject.org/meta-security layers/meta-security
+$ git clone -b scarthgap-7.x.y https://github.com/toradex/meta-toradex-security layers/meta-toradex-security
+```
+   `setup-environment` adds them to `conf/bblayers.conf` when they are
+   present. An existing build directory needs them added by hand.
 
 Build
 ======
@@ -259,6 +267,79 @@ can also reach, so with snap-installed Docker keep it under your home.
 The container images themselves are fetched into Docker's own storage, which is
 usually on a different filesystem (`docker info` reports `Docker Root Dir`);
 allow for the bundle there as well.
+
+Encrypted Data Partition
+======
+The LEC-MTK-i1200 carries a TPM 2.0. With the `tdx-encrypted` class of
+`meta-toradex-security`, the image keeps a data partition encrypted with a key
+sealed by the TPM, and Docker's storage lives on it. The root filesystem stays
+unencrypted, because U-Boot loads the kernel from it.
+
+Configuration
+------
+This needs the security layers of step 6 of _Setup_. Add these lines to
+`conf/local.conf` before building `torizon-docker`:
+```
+INHERIT += "tdx-encrypted"
+TDX_ENC_KEY_BACKEND = "tpm"
+TDX_ENC_CIPHER = "aes-xts"
+TDX_ENC_KEY_LOCATION = "filesystem"
+TDX_ENC_STORAGE_LOCATION = "/dev/tdx-encdata"
+```
+Flash the result as described in _Flash the Device_.
+
+First boot
+------
+The flashed image contains only the bootloader and root filesystem partitions.
+On first boot:
+1. `data-partition.service` sets the root filesystem partition to end at 16 GiB
+   (`DATA_PARTITION_ROOTFS_END_MIB`, default `16384`) and creates a partition
+   named `data` over the rest of the UFS. A udev rule links it as
+   `/dev/tdx-encdata`.
+2. The encryption handler creates a trusted key sealed by the TPM, formats the
+   partition with dm-crypt (AES-XTS) and ext4, and mounts it on `/run/encdata`.
+   The sealed key blob is stored in `/var/local/private/.keys/`.
+3. `docker-encdata.service` moves the contents of `/var/lib/docker`, including
+   containers preloaded with TorizonCore Builder, onto the encrypted partition,
+   and bind-mounts it on `/var/lib/docker` on every boot.
+
+Docker and containerd do not start unless the partition is unlocked and
+mounted. This also fails the boot check, so an OTA update that cannot unlock the
+partition is rolled back.
+
+To check a running device:
+```
+torizon@torizon-lec-mtk-i1200-ufs:~$ sudo dmsetup table --showkey encdata
+0 91406296 crypt capi:xts(aes)-plain64 :64:trusted:tdxenc 0 8:35 0
+torizon@torizon-lec-mtk-i1200-ufs:~$ findmnt /var/lib/docker
+TARGET          SOURCE                       FSTYPE OPTIONS
+/var/lib/docker /dev/mapper/encdata[/docker] ext4   rw,relatime,stripe=32
+```
+
+Limitations
+------
+* **Factory flash only.** A device that has run an unencrypted image has its
+  root filesystem grown to the end of the disk, and the partition is never
+  shrunk. An OTA update from an unencrypted image to an encrypted one is
+  therefore refused: `data-partition.service` fails with
+  `it is never shrunk, so the data partition needs a factory flash`, the
+  partition table is left unchanged, and the update is rolled back. Move such a
+  device to the encrypted layout with `genio-flash`.
+* **Re-flashing erases the data partition.** `genio-flash` writes a new
+  partition table, and the next boot recreates and formats `data`.
+* **Losing the key loses the data.** If the sealed key blob is lost, the
+  handler creates a new key and formats the partition. Data on it is lost, and
+  so are preloaded containers, whose copy on the root filesystem was removed
+  after the move; they have to be pulled again. Clearing the TPM destroys the
+  key: the partition can no longer be decrypted.
+* **What stays in plain text:** the root filesystem, including `/var/sota`
+  (docker-compose files and device credentials), `/var/lib/containerd`, and any
+  host path that a container bind-mounts outside `/var/lib/docker`.
+* `DOCKER_ON_EXTERNAL_STORAGE=1` is not supported together with encryption: it
+  mounts plain-text external storage over `/var/lib/docker`.
+* TorizonCore Builder `build`, with or without a container bundle, and
+  `isolate` work unchanged on encrypted images; images they produce create the
+  data partition on first boot.
 
 References
 ======
