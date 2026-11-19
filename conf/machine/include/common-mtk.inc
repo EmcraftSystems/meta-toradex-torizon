@@ -64,6 +64,8 @@ FIT_GENERATE_KEYS ?= "1"
 FIT_HASH_ALG ?= "sha256"
 FIT_SIGN_ALG ?= "rsa3072"
 FIT_SIGN_NUMBITS ?= "3072"
+# meta-toradex-security enables the U-Boot hardening only on i.MX and TI K3.
+TDX_UBOOT_HARDENING_ENABLE ?= "1"
 
 # --- OP-TEE userspace -------------------------------------------------------
 # tee-supplicant; not pulled in by the BSP, so install it explicitly.

@@ -1,0 +1,40 @@
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Thu, 19 Nov 2026 11:50:00 +0100
+Subject: [PATCH] command: add the cmd_arg helpers
+
+The Toradex secure boot module uses cmd_arg1() and cmd_arg2(), which
+U-Boot gained after 2022.10. Add them as later releases define them.
+
+Upstream-Status: Backport [U-Boot v2023.01]
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ include/command.h | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/include/command.h b/include/command.h
+--- a/include/command.h
++++ b/include/command.h
+@@ -101,6 +101,21 @@ int cmd_auto_complete(const char *const prompt, char *buf, int *np,
+  *	   -1 (CMD_RET_USAGE) if 'usage' error is found
+  */
+ int cmd_process_error(struct cmd_tbl *cmdtp, int err);
++
++static inline const char *cmd_arg0(int argc, char *const argv[])
++{
++	return argc > 0 ? argv[0] : NULL;
++}
++
++static inline const char *cmd_arg1(int argc, char *const argv[])
++{
++	return argc > 1 ? argv[1] : NULL;
++}
++
++static inline const char *cmd_arg2(int argc, char *const argv[])
++{
++	return argc > 2 ? argv[2] : NULL;
++}
+ 
+ /*
+  * Monitor Command
+-- 
+2.34.1

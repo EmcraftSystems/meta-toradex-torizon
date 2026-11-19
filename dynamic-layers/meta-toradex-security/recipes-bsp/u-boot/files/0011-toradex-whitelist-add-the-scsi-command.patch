@@ -1,0 +1,56 @@
+From 205c07a328052cacecb039fd8cc2cae12198eb91 Mon Sep 17 00:00:00 2001
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Thu, 19 Nov 2026 12:10:42 +0100
+Subject: [PATCH] toradex: whitelist: add the scsi command
+
+The distro boot script finds a UFS boot device with "scsi scan" and
+"scsi dev", which the whitelist does not know, so a hardened U-Boot on
+a UFS board stops at the prompt. Add the scsi subcommands with their
+own categories, the scan and device selection ones as needed for boot.
+
+Upstream-Status: Pending
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ common/whitelist.c                               | 10 ++++++++++
+ include/dt-bindings/secure-boot/cmd-categories.h |  4 ++++
+ 2 files changed, 14 insertions(+)
+
+diff --git a/common/whitelist.c b/common/whitelist.c
+index 6f66a667..50c13899 100644
+--- a/common/whitelist.c
++++ b/common/whitelist.c
+@@ -395,6 +395,16 @@ static const struct cmd_whitelist_entry cmd_whitelist[] = {
+ 	{ { "run", ALL }, { CMD_CAT_SAFE, CMD_CAT_NEEDED } },
+ 	{ { "save", ALL }, { CMD_CAT_FS_WRITE, CMD_CAT_MEM_READ } },
+ 	{ { "saveenv", ALL }, { CMD_CAT_SAFE, CMD_CAT_NEEDED } },
++#ifdef CONFIG_CMD_SCSI
++	{ { "scsi", "reset", ALL }, { CMD_CAT_SCSI_CONTROL } },
++	{ { "scsi", "info", ALL }, { CMD_CAT_SCSI_DIAG } },
++	{ { "scsi", "scan", ALL }, { CMD_CAT_SCSI_CONTROL, CMD_CAT_NEEDED } },
++	{ { "scsi", "dev", ALL }, { CMD_CAT_SCSI_CONTROL, CMD_CAT_NEEDED } }, /* alias to "device" */
++	{ { "scsi", "device", ALL }, { CMD_CAT_SCSI_CONTROL, CMD_CAT_NEEDED } },
++	{ { "scsi", "part", ALL }, { CMD_CAT_SCSI_DIAG } },
++	{ { "scsi", "read", ALL }, { CMD_CAT_SCSI_READ, CMD_CAT_MEM_WRITE } },
++	{ { "scsi", "write", ALL }, { CMD_CAT_SCSI_WRITE, CMD_CAT_MEM_READ } },
++#endif /* CONFIG_CMD_SCSI */
+ 	{ { "scu_rm", ALL }, { CMD_CAT_SCU_PART } },
+ #ifdef CONFIG_CMD_USB_SDP
+ 	{ { "sdp", ALL }, { CMD_CAT_GADGETSDP } },
+diff --git a/include/dt-bindings/secure-boot/cmd-categories.h b/include/dt-bindings/secure-boot/cmd-categories.h
+index ce92cb8a..ad0eae43 100644
+--- a/include/dt-bindings/secure-boot/cmd-categories.h
++++ b/include/dt-bindings/secure-boot/cmd-categories.h
+@@ -93,6 +93,10 @@
+ #define CMD_CAT_REGULATOR_CONTROL	300
+ #define CMD_CAT_REGULATOR_DIAG		301
+ #define CMD_CAT_SCU_PART		310
++#define CMD_CAT_SCSI_CONTROL		315
++#define CMD_CAT_SCSI_DIAG		316
++#define CMD_CAT_SCSI_READ		317
++#define CMD_CAT_SCSI_WRITE		318
+ #define CMD_CAT_SER_LOAD		320
+ #define CMD_CAT_SETEXPR			330
+ #define CMD_CAT_SNVS_CONTROL		341
+-- 
+2.25.1
+
