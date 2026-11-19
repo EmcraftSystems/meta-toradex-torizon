@@ -25,3 +25,7 @@ SRC_URI:append:lec-mtk1200 = " file://no-splash.cfg"
 
 # Drop the device-tree env import: no /config/environment node in the control DTB.
 SRC_URI:append:lec-mtk1200 = " file://no-fdt-env-import.cfg"
+
+# Signed builds: check the FIT image signature against the key uboot-sign puts
+# into the control device tree.
+SRC_URI:append:lec-mtk1200:tdx-signed = " file://fit-signature.cfg"

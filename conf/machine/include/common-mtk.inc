@@ -51,6 +51,20 @@ UENV_EXTRA_CONFIGS = "env set otaroot ${distro_bootpart} ; env set fdt_file ${fd
 # Device tree deployed into the OSTree boot directory.
 OSTREE_DEVICETREE ?= "mediatek/lec-mtk-i1200-ufs.dtb"
 
+# --- Signed images (torizon-signed / tdx-signed) ----------------------------
+# mediatek-common.inc, parsed after this file, sets the FIT signing variables
+# with ?= to empty values unless MediaTek's "secure-boot" distro feature is on,
+# which would pre-empt tdx-signed's own defaults; set them here first. Its hard
+# UBOOT_SIGN_ENABLE assignment can only be overridden.
+UBOOT_SIGN_ENABLE:tdx-signed = "1"
+UBOOT_SIGN_KEYDIR ?= "${TOPDIR}/keys/fit"
+UBOOT_SIGN_KEYNAME ?= "dev"
+UBOOT_SIGN_IMG_KEYNAME ?= "dev2"
+FIT_GENERATE_KEYS ?= "1"
+FIT_HASH_ALG ?= "sha256"
+FIT_SIGN_ALG ?= "rsa3072"
+FIT_SIGN_NUMBITS ?= "3072"
+
 # --- OP-TEE userspace -------------------------------------------------------
 # tee-supplicant; not pulled in by the BSP, so install it explicitly.
 IMAGE_INSTALL:append = " optee-client"
