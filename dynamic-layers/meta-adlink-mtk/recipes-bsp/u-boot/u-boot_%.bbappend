@@ -14,6 +14,10 @@ SRC_URI:append:lec-mtk1200 = " file://0001-torizon-restore-distro-boot_targets.p
 # Applies on top of the vendor board-support patch.
 SRC_URI:append:lec-mtk1200 = " file://0002-torizon-set-boot_conf-instead-of-appending.patch"
 
+# Give the boot script the SKU's memory overlay on its own, in fitconf_memory,
+# so selecting it needs no setexpr.
+SRC_URI:append:lec-mtk1200 = " file://0003-torizon-set-fitconf_memory-to-the-SKU-memory-overlay.patch"
+
 # Accept the legacy-format boot.scr (FIT_SIGNATURE defaults LEGACY_IMAGE_FORMAT off).
 SRC_URI:append:lec-mtk1200 = " file://legacy-image-format.cfg"
 
