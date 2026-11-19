@@ -30,6 +30,10 @@ KBUILD_DEFCONFIG:lec-mtk1200 = ""
 include recipes-kernel/linux/linux-sec-features.inc
 TDX_ENC_KCONFIG_CHECK = ""
 TDX_ENC_KCONFIG_CHECK:tdx-encrypted = "1"
+CFS_KCONFIG_CHECK = ""
+CFS_KCONFIG_CHECK:cfs-support = "1"
+CFS_VERITY_KCONFIG_CHECK = ""
+CFS_VERITY_KCONFIG_CHECK:cfs-signed = "1"
 
 # Everything here hangs off lec-mtk1200, the vendor's own override: if it is
 # renamed, the KBUILD_DEFCONFIG override, this task disable, the fragment
@@ -90,6 +94,20 @@ do_configure:append:lec-mtk1200() {
         fi
         if [ -n "$missing" ]; then
             bbfatal "the security fragments did not reach the built .config:$missing"
+        fi
+    fi
+
+    # A composefs image whose kernel lacks these does not mount its root.
+    if [ -n "${CFS_KCONFIG_CHECK}" ]; then
+        for sym in CONFIG_EROFS_FS CONFIG_OVERLAY_FS; do
+            grep -qE "^$sym=(y|m)$" ${B}/.config || missing="$missing $sym"
+        done
+        grep -qxF CONFIG_BLK_DEV_LOOP=y ${B}/.config || missing="$missing CONFIG_BLK_DEV_LOOP"
+        if [ -n "${CFS_VERITY_KCONFIG_CHECK}" ]; then
+            grep -qxF CONFIG_FS_VERITY=y ${B}/.config || missing="$missing CONFIG_FS_VERITY"
+        fi
+        if [ -n "$missing" ]; then
+            bbfatal "the composefs fragments did not reach the built .config:$missing"
         fi
     fi
 
