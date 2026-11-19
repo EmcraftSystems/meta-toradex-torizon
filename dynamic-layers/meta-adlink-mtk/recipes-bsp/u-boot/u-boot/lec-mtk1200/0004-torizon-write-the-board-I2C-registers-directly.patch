@@ -1,0 +1,59 @@
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Thu, 19 Nov 2026 12:33:58 +0100
+Subject: [PATCH] torizon: write the board I2C registers directly
+
+setup_dsi() and reset_ethphy() set four registers on I2C bus 4 by
+running "i2c dev" and "i2c mw" through run_command(). The U-Boot
+command whitelist of signed builds denies I2C writes on a closed device,
+which would leave the bridge and the Ethernet PHY unset. Write the same
+registers with the driver model I2C calls instead.
+
+Upstream-Status: Pending
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ board/mediatek/lec_mtk_i1200/lec_mtk_i1200.c | 23 +++++++++++++++-----
+ 1 file changed, 17 insertions(+), 6 deletions(-)
+
+diff --git a/board/mediatek/lec_mtk_i1200/lec_mtk_i1200.c b/board/mediatek/lec_mtk_i1200/lec_mtk_i1200.c
+index 8075fdee..b5c29782 100755
+--- a/board/mediatek/lec_mtk_i1200/lec_mtk_i1200.c
++++ b/board/mediatek/lec_mtk_i1200/lec_mtk_i1200.c
+@@ -274,18 +274,29 @@ static int board_usbgpio_init(void)
+ 
+ }
+ 
++/* Write one register of a chip on I2C bus 4, as "i2c mw <chip> <reg> <val> 1" did. */
++static void board_i2c4_write(uint chip, uint reg, u8 val)
++{
++	struct udevice *dev;
++	int ret;
++
++	ret = i2c_get_chip_for_busnum(4, chip, 1, &dev);
++	if (!ret)
++		ret = dm_i2c_reg_write(dev, reg, val);
++	if (ret)
++		printf("%s: chip 0x%02x reg 0x%02x: %d\n", __func__, chip, reg, ret);
++}
++
+ static void setup_dsi(void)
+ {
+-	        char dsisetup[255];
+-		sprintf(dsisetup,"i2c dev 4 ; i2c mw 0x3f 0x0f 0xfe 1; i2c mw 0x3f 0x11 0x3a 1");
+-   		run_command(dsisetup, 0);
++	board_i2c4_write(0x3f, 0x0f, 0xfe);
++	board_i2c4_write(0x3f, 0x11, 0x3a);
+ }
+ 
+ static void reset_ethphy(void)
+ {
+-	char ethphy_reset[255];
+-	sprintf(ethphy_reset,"i2c dev 4 ; i2c mw 0x3e 0x7d 0x12 1; i2c mw 0x3e 0x7d 0x34 1");
+-	run_command(ethphy_reset, 0);
++	board_i2c4_write(0x3e, 0x7d, 0x12);
++	board_i2c4_write(0x3e, 0x7d, 0x34);
+ 
+ 	gpio_request(93, "phy_strap");
+ 	gpio_direction_output(93, 0);
+-- 
+2.25.1
+

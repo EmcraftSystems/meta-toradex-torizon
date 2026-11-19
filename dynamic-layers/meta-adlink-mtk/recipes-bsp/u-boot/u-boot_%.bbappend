@@ -18,6 +18,13 @@ SRC_URI:append:lec-mtk1200 = " file://0002-torizon-set-boot_conf-instead-of-appe
 # so selecting it needs no setexpr.
 SRC_URI:append:lec-mtk1200 = " file://0003-torizon-set-fitconf_memory-to-the-SKU-memory-overlay.patch"
 
+# Set the bridge and Ethernet PHY registers without the i2c command, which the
+# U-Boot command whitelist of signed builds denies on a closed device.
+SRC_URI:append:lec-mtk1200 = " file://0004-torizon-write-the-board-I2C-registers-directly.patch"
+
+# A hardened U-Boot looks for the boot script on the UFS only.
+SRC_URI:append:lec-mtk1200 = " file://0005-torizon-boot-only-from-UFS-when-hardened.patch"
+
 # Accept the legacy-format boot.scr (FIT_SIGNATURE defaults LEGACY_IMAGE_FORMAT off).
 SRC_URI:append:lec-mtk1200 = " file://legacy-image-format.cfg"
 
