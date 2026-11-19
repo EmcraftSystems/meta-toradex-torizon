@@ -13,3 +13,26 @@ do_deploy:append () {
 
     echo "fdt_overlays=$(echo $overlays)" > ${DEPLOYDIR}/overlays.txt
 }
+
+# Signed builds with the U-Boot hardening: the fixed part of the kernel command
+# line, as an overlay in the FIT image that U-Boot checks bootargs against. The
+# devicetree class compiles every .dts in its source directory.
+SECBOOT_KARGS = "${@'1' if 'tdx-signed' in d.getVar('OVERRIDES').split(':') and d.getVar('TDX_UBOOT_HARDENING_ENABLE') == '1' else ''}"
+
+do_configure:append () {
+    if [ -n "${SECBOOT_KARGS}" ]; then
+        [ -n "${TDX_SECBOOT_REQUIRED_BOOTARGS}" ] || bbfatal "TDX_SECBOOT_REQUIRED_BOOTARGS is empty"
+        cat > ${S}/${TDX_SECBOOT_KARGS_OVERLAY}.dts <<EOT
+/dts-v1/;
+/plugin/;
+
+&{/} {
+	chosen {
+		toradex,secure-boot {
+			required-bootargs = "${TDX_SECBOOT_REQUIRED_BOOTARGS}";
+		};
+	};
+};
+EOT
+    fi
+}

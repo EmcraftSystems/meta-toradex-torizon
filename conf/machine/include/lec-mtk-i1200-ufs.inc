@@ -20,6 +20,10 @@ MEMORY_OVERLAYS ?= "2G 4G 8G"
 # used, so the line passes the U-Boot command whitelist of signed builds.
 UENV_EXTRA_CONFIGS:append = " ; if test -n "${fitconf_memory}" ; then env set fitconf_fdt_overlays "${fitconf_fdt_overlays}\#${fitconf_memory}" ; fi"
 
+# Signed builds with the U-Boot hardening boot with the overlay that carries the
+# required kernel command line (the dtbo recipe builds it).
+FITCONF_FDT_OVERLAYS:append:tdx-signed = "${@'#conf-%s.dtbo' % d.getVar('TDX_SECBOOT_KARGS_OVERLAY') if d.getVar('TDX_UBOOT_HARDENING_ENABLE') == '1' else ''}"
+
 # Kernel command line for the OSTree / OTA rootfs. Console is uart0 (ttyS0) at
 # 921600, matching the board DTS stdout-path and U-Boot.
 #
