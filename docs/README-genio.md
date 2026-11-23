@@ -244,6 +244,28 @@ by `torizoncore-builder` growing the output image itself, so it is not a
 limit on the bundle — but the grow makes the run's disk appetite scale with
 the bundle.
 
+Signed images
+------
+On an image built with `torizon-signed`, the OSTree commit a customization
+produces has to be signed again with the composefs key the image was built
+with, while the kernel FIT image stays as built. `torizoncore-builder build`
+refuses a `secboot` section on a raw image, so customize a signed image with
+the individual commands in place of step 2. Copy `cfs-dev.sec` and
+`cfs-dev.pub` into `work/keys/`, then, from inside `work/`:
+
+```
+$ torizoncore-builder images unpack input.wic --raw-sector-size 4096
+$ torizoncore-builder union --changes-directory changes \
+      --ostree-key-dir keys --ostree-key "name=cfs-dev" custom
+$ torizoncore-builder deploy custom --base-raw input.wic \
+      --raw-sector-size 4096 --output-raw output.wic
+```
+
+and continue with step 3. This applies the files in `changes/`, including
+files in `/etc`, which a signed image restores from the image at every boot.
+Kernel arguments and device-tree overlays are part of the signed FIT image,
+so on a signed image they are set in the image build.
+
 Host free space
 ------
 

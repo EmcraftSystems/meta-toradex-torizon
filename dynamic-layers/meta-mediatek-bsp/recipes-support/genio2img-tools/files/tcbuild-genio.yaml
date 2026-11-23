@@ -10,7 +10,8 @@
 # the filesystem, and kernel arguments. Device trees and device-tree overlays
 # need a tcb release that writes FIT hash values for the images it adds
 # (torizon/torizoncore-builder#181).
-# Kernel-module builds and secboot are out of scope.
+# Kernel-module builds are out of scope. A signed image is customized
+# with the individual commands instead; see docs/README-genio.md.
 input:
   raw-image:
     local: input.wic
