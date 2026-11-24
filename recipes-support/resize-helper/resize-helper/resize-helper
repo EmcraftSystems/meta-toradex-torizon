@@ -36,8 +36,14 @@ FDISK=$(which fdisk) || { echo "E: You must have fdisk" && exit 1; }
 PARTX=$(which partx) || { echo "E: You must have partx" && exit 1; }
 RESIZE2FS=$(which resize2fs) || { echo "E: You must have resize2fs" && exit 1; }
 
-# find root device
-ROOT_DEVICE=$(findmnt --noheadings --output=SOURCE / | cut -d'[' -f1)
+# find root device; on a composefs root, / is an overlay and the physical
+# root filesystem is the one mounted at /sysroot
+ROOT_MOUNT=/
+if [ "$(findmnt --noheadings --output=FSTYPE /)" = "overlay" ] && \
+   findmnt --noheadings /sysroot > /dev/null; then
+	ROOT_MOUNT=/sysroot
+fi
+ROOT_DEVICE=$(findmnt --noheadings --output=SOURCE ${ROOT_MOUNT} | cut -d'[' -f1)
 # prune root device (for example UUID)
 ROOT_DEVICE=$(realpath ${ROOT_DEVICE})
 # get the partition number and type
@@ -68,7 +74,12 @@ else
 	SIZE=$(blockdev --getsz ${DEVICE})
 	END=$((${SIZE} - 1))
 	PARTOF=$(echo "${INFO}" | grep '^ID_PART_ENTRY_OFFSET=' | cut -d'=' -f2)
-	echo -e "d\n${PART_ENTRY_NUMBER}\nn\np\n${PART_ENTRY_NUMBER}\n${PARTOF}\n${END}\nw\n" | ${FDISK} ${DEVICE}
+	PARTSZ=$(echo "${INFO}" | grep '^ID_PART_ENTRY_SIZE=' | cut -d'=' -f2)
+	# Skip a partition that already ends at the last sector, so that a run
+	# after the grow leaves the table alone.
+	if [ $((${PARTOF} + ${PARTSZ} - 1)) -lt ${END} ]; then
+		echo -e "d\n${PART_ENTRY_NUMBER}\nn\np\n${PART_ENTRY_NUMBER}\n${PARTOF}\n${END}\nw\n" | ${FDISK} ${DEVICE}
+	fi
 fi
 
 ${PARTX} -u ${DEVICE}
