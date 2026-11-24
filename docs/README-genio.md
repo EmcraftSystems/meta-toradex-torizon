@@ -266,6 +266,9 @@ files in `/etc`, which a signed image restores from the image at every boot.
 Kernel arguments and device-tree overlays are part of the signed FIT image,
 so on a signed image they are set in the image build.
 
+The keys, the chain of trust and the build configuration of a signed image
+are described in [README-secure-boot-mtk.md](README-secure-boot-mtk.md).
+
 Host free space
 ------
 
