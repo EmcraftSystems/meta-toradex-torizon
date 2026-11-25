@@ -1,0 +1,14 @@
+# Signed builds: BL2 authenticates the firmware image package against the hash
+# of SECURE_BOOT_ROT_KEY compiled into it, independently of the eFuses. These
+# are the options MediaTek's "secure-boot" distro feature sets; that feature is
+# left off because it also drops the U-Boot environment that the update
+# rollback needs.
+TFA_MBEDTLS:tdx-signed = "1"
+EXTRA_OEMAKE:append:tdx-signed = " ${TFA_SECURE_BOOT_OPTION}"
+
+# MediaTek's own warning for this fires only under its "secure-boot" feature.
+do_compile:prepend:tdx-signed() {
+    if [ "${SECURE_BOOT_ROT_KEY}" = "${DEFAULT_ROT_KEY}" ]; then
+        bbwarn "SECURE_BOOT_ROT_KEY is not set: the FIP is signed with MediaTek's public test key"
+    fi
+}

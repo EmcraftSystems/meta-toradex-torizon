@@ -13,12 +13,16 @@ hostname:pn-base-files = "torizon-lec-mtk-i1200-ufs"
 # does not contain fails the boot, and that cannot be recovered remotely.
 MEMORY_OVERLAYS ?= "2G 4G 8G"
 
-# Apply the memory overlay Adlink's U-Boot selects from the SKU pins. U-Boot puts
-# it into boot_conf (e.g. "<NULL>#conf-memory-8G.dtbo#conf-temp-er.dtbo"), but
-# Torizon's boot script only uses fitconf_fdt_overlays, so append each
-# conf-memory-<size>.dtbo from MEMORY_OVERLAYS that boot_conf contains. Anything
-# else leaves the overlay unset, i.e. the 4 GiB default.
-UENV_EXTRA_CONFIGS:append = " ; for memsz in ${MEMORY_OVERLAYS} ; do if setexpr memconf sub "conf-memory-${memsz}.dtbo" "" "${boot_conf}" ; then env set fitconf_fdt_overlays "${fitconf_fdt_overlays}\#conf-memory-${memsz}.dtbo" ; fi ; done ; env set memconf"
+# Apply the memory overlay for the module's SKU. U-Boot's board code reads the
+# SKU pins and sets fitconf_memory to its conf-memory-<size>.dtbo, or deletes
+# it for an unknown SKU, which leaves the 4 GiB default. The FIT image carries a
+# configuration only for the sizes in MEMORY_OVERLAYS. Only test and env are
+# used, so the line passes the U-Boot command whitelist of signed builds.
+UENV_EXTRA_CONFIGS:append = " ; if test -n "${fitconf_memory}" ; then env set fitconf_fdt_overlays "${fitconf_fdt_overlays}\#${fitconf_memory}" ; fi"
+
+# Signed builds with the U-Boot hardening boot with the overlay that carries the
+# required kernel command line (the dtbo recipe builds it).
+FITCONF_FDT_OVERLAYS:append:tdx-signed = "${@'#conf-%s.dtbo' % d.getVar('TDX_SECBOOT_KARGS_OVERLAY') if d.getVar('TDX_UBOOT_HARDENING_ENABLE') == '1' else ''}"
 
 # Kernel command line for the OSTree / OTA rootfs. Console is uart0 (ttyS0) at
 # 921600, matching the board DTS stdout-path and U-Boot.

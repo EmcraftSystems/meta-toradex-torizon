@@ -1,0 +1,32 @@
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Thu, 19 Nov 2026 12:33:58 +0100
+Subject: [PATCH] torizon: boot only from UFS when hardened
+
+The distro boot scan tries USB before UFS. A hardened U-Boot denies
+"usb start" on a closed device, and a signed image has no reason to
+look for a boot script on a USB drive, so leave USB out of the boot
+targets when the Toradex hardening is built in.
+
+Upstream-Status: Pending
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ include/configs/lec_mtk_i1200.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/include/configs/lec_mtk_i1200.h b/include/configs/lec_mtk_i1200.h
+index 0d9dd73c..0e523676 100755
+--- a/include/configs/lec_mtk_i1200.h
++++ b/include/configs/lec_mtk_i1200.h
+@@ -85,7 +85,8 @@
+ #define BOOT_TARGET_MMC(func)
+ #endif
+ 
+-#ifdef CONFIG_CMD_USB
++/* A hardened (signed) build boots from the on-module UFS only. */
++#if defined(CONFIG_CMD_USB) && !defined(CONFIG_TDX_SECBOOT_HARDENING)
+ #define BOOT_TARGET_USB(func) func(USB, usb, 0)
+ #else
+ #define BOOT_TARGET_USB(func)
+-- 
+2.25.1
+

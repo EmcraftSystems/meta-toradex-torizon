@@ -2,11 +2,17 @@
 Description=Resize root filesystem to fit available disk space
 Wants=systemd-udevd.service systemd-udev-trigger.service
 After=systemd-remount-fs.service systemd-udevd.service
+RequiresMountsFor=/var
+# /etc is reset at every boot of a composefs image, where the disable below
+# does not last; the marker in /var does.
+ConditionPathExists=!/var/lib/resize-helper/done
 
 [Service]
 Type=oneshot
 ExecStartPre=-/bin/udevadm settle
 ExecStart=/usr/sbin/resize-helper
+ExecStartPost=/bin/mkdir -p /var/lib/resize-helper
+ExecStartPost=/bin/touch /var/lib/resize-helper/done
 ExecStartPost=/bin/systemctl disable resize-helper.service
 
 [Install]

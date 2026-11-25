@@ -1,0 +1,37 @@
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Thu, 19 Nov 2026 09:30:00 +0100
+Subject: [PATCH] torizon: set fitconf_memory to the SKU memory overlay
+
+The boot script used to pick the memory overlay out of boot_conf with
+setexpr, which the U-Boot command whitelist of signed builds does not
+allow. Set fitconf_memory to the conf-memory-<size>.dtbo part of the SKU
+entry instead, and delete it for an unknown SKU, so the boot script only
+has to append it. boot_conf keeps its value.
+
+Upstream-Status: Pending
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+ board/mediatek/lec_mtk_i1200/lec_mtk_i1200.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+--- a/board/mediatek/lec_mtk_i1200/lec_mtk_i1200.c
++++ b/board/mediatek/lec_mtk_i1200/lec_mtk_i1200.c
+@@ -308,11 +308,16 @@
+     uint32_t sku_id = (sku_id_4 << 4) | (sku_id_3 << 3) | (sku_id_2 << 2) | (sku_id_1 << 1) | sku_id_0;
+ 
+     int i;
++    env_set("fitconf_memory", NULL);
+     for (i = 0; i < sizeof(skus)/sizeof(struct sku_info); i++) {
+         if (skus[i].sku_id == sku_id) {
+ 		printf("SKU:   %s\n", skus[i].sku_str);
+ 		snprintf(cmd, sizeof(cmd), "setenv boot_conf '%s'", skus[i].dtbo_file);
+ 		run_command(cmd, 0);
++		/* The memory overlay alone; the FIT image has no other SKU overlay. */
++		snprintf(cmd, sizeof(cmd), "%.*s",
++			 (int)strcspn(skus[i].dtbo_file, "#"), skus[i].dtbo_file);
++		env_set("fitconf_memory", cmd);
+ 		break;
+         }
+     }
+-- 
+2.34.1
