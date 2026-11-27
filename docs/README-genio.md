@@ -293,6 +293,51 @@ The container images themselves are fetched into Docker's own storage, which is
 usually on a different filesystem (`docker info` reports `Docker Root Dir`);
 allow for the bundle there as well.
 
+Bootloader Update
+======
+The firmware image package (`fip.bin`: TF-A BL31, OP-TEE and U-Boot) is held in
+two copies, on the partitions `bootloaders` (slot A) and `bootloaders_b`
+(slot B). BL2 boots the slot that the boot-control record in the partition
+`misc` names, and U-Boot marks that slot good just before it starts the kernel.
+A slot that has not been marked good is booted eight times, after which BL2
+boots the other slot. BL2 itself, on `mmc0boot0`, has a single copy and is not
+updated in the field.
+
+Publishing an update
+------
+Upload the `fip.bin` of the new build to Torizon Cloud as a package for the
+hardware ID `lec-mtk-i1200-ufs-bootloader`, and deploy it to the device's
+bootloader. `/usr/bin/bl_actions.sh` writes it to the slot the device is not
+running, reads it back, points the record at that slot and reboots. It refuses
+while the running slot is not yet marked good. The update
+succeeds once the new slot has booted Linux. If the new package does not load
+or fails authentication, BL2 falls back to the previous slot and the update is
+reported as failed. On a signed image the package must be signed with the
+`rot_key.pem` the image was built with.
+
+Reading the record
+------
+```
+# sudo od -An -t u4 -N 4 /dev/disk/by-partlabel/misc
+# sudo od -An -t u1 -j 9 -N 2 /dev/disk/by-partlabel/misc
+```
+
+The first prints the slot booted (0 for A, 1 for B), the second the tries of
+slot A and slot B (0 marks a slot good).
+
+Limitations
+------
+* A device gets the two slots only from a factory flash; one flashed with an
+  earlier image has a single slot and cannot take this update.
+* A package that BL2 loads but that then hangs in BL31, OP-TEE or U-Boot is
+  retried once per power cycle, and after eight boots BL2 boots the other slot.
+* Only a slot that has not been marked good falls back. If the running slot,
+  already marked good, later stops loading, BL2 keeps booting it and the board
+  restarts in a loop. Recover it with `genio-flash`.
+* If neither slot loads, the board restarts in a loop. Recover it with
+  `genio-flash`.
+* The package version is not checked, so an older package can be installed.
+
 Encrypted Data Partition
 ======
 The LEC-MTK-i1200 carries a TPM 2.0. With the `tdx-encrypted` class of
@@ -315,7 +360,7 @@ Flash the result as described in _Flash the Device_.
 
 First boot
 ------
-The flashed image contains only the bootloader and root filesystem partitions.
+The flashed image contains no data partition.
 On first boot:
 1. `data-partition.service` sets the root filesystem partition to end at 16 GiB
    (`DATA_PARTITION_ROOTFS_END_MIB`, default `16384`) and creates a partition

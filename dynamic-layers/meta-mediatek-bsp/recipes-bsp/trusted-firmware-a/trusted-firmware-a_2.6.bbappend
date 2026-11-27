@@ -10,3 +10,9 @@ do_compile:prepend() {
 }
 
 require trusted-firmware-a-secboot.inc
+
+# Source of the zeroed "misc" partition in torizon-mtk-sota.wks, deployed with
+# the fip.bin the same image takes.
+do_deploy:append:lec-mtk1200() {
+	dd if=/dev/zero of=${DEPLOYDIR}/misc-zero.bin bs=1024 count=1024
+}

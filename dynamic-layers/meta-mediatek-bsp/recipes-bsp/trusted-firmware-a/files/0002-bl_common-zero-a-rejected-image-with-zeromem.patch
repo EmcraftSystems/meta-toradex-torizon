@@ -1,0 +1,31 @@
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Fri, 27 Nov 2026 11:15:00 +0100
+Subject: [PATCH] bl_common: zero a rejected image with zeromem
+
+When an image fails authentication, load_auth_image_recursive() wipes
+it with zero_normalmem(), which uses DC ZVA and works only on normal
+memory. MediaTek's BL2 runs with the MMU off, so the wipe faults and
+BL2 stops in the panic handler instead of returning -EAUTH. Use
+zeromem(), which works with the MMU on or off.
+
+Upstream-Status: Inappropriate [MediaTek's BL2 runs with the MMU off]
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+--- a/common/bl_common.c
++++ b/common/bl_common.c
+@@ -194,9 +194,12 @@
+ 				 (void *)image_data->image_base,
+ 				 image_data->image_size);
+ 	if (rc != 0) {
+-		/* Authentication error, zero memory and flush it right away. */
+-		zero_normalmem((void *)image_data->image_base,
+-			       image_data->image_size);
++		/*
++		 * Authentication error, zero memory and flush it right away.
++		 * zeromem, not zero_normalmem: BL2 may run with the MMU off.
++		 */
++		zeromem((void *)image_data->image_base,
++			image_data->image_size);
+ 		flush_dcache_range(image_data->image_base,
+ 				   image_data->image_size);
+ 		return -EAUTH;
