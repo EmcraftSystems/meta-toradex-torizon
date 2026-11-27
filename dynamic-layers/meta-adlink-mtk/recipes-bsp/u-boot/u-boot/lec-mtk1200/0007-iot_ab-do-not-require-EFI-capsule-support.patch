@@ -1,0 +1,21 @@
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Thu, 26 Nov 2026 13:00:00 +0100
+Subject: [PATCH] iot_ab: do not require EFI capsule support
+
+The A/B boot code reads and writes the boot-control record on the
+"misc" partition and uses no EFI service, but its option depends on
+EFI_HAVE_CAPSULE_SUPPORT. With the EFI loader disabled the option is
+dropped silently and U-Boot never marks the booted slot good.
+
+Upstream-Status: Pending
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+--- a/boot/Kconfig
++++ b/boot/Kconfig
+@@ -1388,6 +1388,5 @@
+ config MEDIATEK_IOT_AB_BOOT_SUPPORT
+ 	bool "MediaTek IoT Yocto A/B updates"
+-	depends on EFI_HAVE_CAPSULE_SUPPORT
+ 	help
+ 	  Add support for MediaTek IoT Yocto A/B updates. This allows the bootloader
+ 	  to select which slot to boot from based on the information provided by

@@ -25,6 +25,22 @@ SRC_URI:append:lec-mtk1200 = " file://0004-torizon-write-the-board-I2C-registers
 # A hardened U-Boot looks for the boot script on the UFS only.
 SRC_URI:append:lec-mtk1200 = " file://0005-torizon-boot-only-from-UFS-when-hardened.patch"
 
+# A/B firmware image package: mark the slot good at kernel hand-off, writing the
+# boot-control record only when that changes it.
+SRC_URI:append:lec-mtk1200 = " file://ab-boot.cfg"
+SRC_URI:append:lec-mtk1200 = " file://0006-iot_ab-write-the-boot-control-record-only-when-it-changes.patch"
+SRC_URI:append:lec-mtk1200 = " file://0007-iot_ab-do-not-require-EFI-capsule-support.patch"
+
+# Kconfig drops an option whose dependencies are unmet without an error.
+do_configure:append:lec-mtk1200() {
+	cfgs=$(find ${B} -maxdepth 2 -name .config)
+	[ -n "$cfgs" ] || bbfatal "no U-Boot .config under ${B}"
+	for cfg in $cfgs; do
+		grep -q '^CONFIG_MEDIATEK_IOT_AB_BOOT_SUPPORT=y' $cfg || \
+			bbfatal "A/B boot support is missing from $cfg"
+	done
+}
+
 # Accept the legacy-format boot.scr (FIT_SIGNATURE defaults LEGACY_IMAGE_FORMAT off).
 SRC_URI:append:lec-mtk1200 = " file://legacy-image-format.cfg"
 

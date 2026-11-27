@@ -1,0 +1,25 @@
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Wed, 25 Nov 2026 17:12:00 +0100
+Subject: [PATCH] iot_ab: write the boot-control record only when it changes
+
+On block devices the success mark rewrote the record at every kernel
+hand-off, even when the slot was already marked good. A power loss
+during that write can tear the record, which BL2 then resets to slot
+A, possibly an older firmware image package. Skip the write when the
+slot's tries is already zero, as the MTD path does.
+
+Upstream-Status: Pending
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+--- a/boot/iot_ab.c
++++ b/boot/iot_ab.c
+@@ -92,7 +92,8 @@
+ 							? PART_BOOT_B : PART_BOOT_A;
+ 		bctrl->tries[bctrl->slot_suffix] = BOOTCTRL_SRC;
+ 		iot_ab_handle_blctrl(dev_desc, part_info, bctrl);
+-	} else if (type == BOOTCTRL_FINISH) {
++	} else if (type == BOOTCTRL_FINISH &&
++		   bctrl->tries[bctrl->slot_suffix] != BOOTCTRL_BOOT_SUCCESS) {
+ 		bctrl->tries[bctrl->slot_suffix] = BOOTCTRL_BOOT_SUCCESS;
+ 		iot_ab_handle_blctrl(dev_desc, part_info, bctrl);
+ 	}

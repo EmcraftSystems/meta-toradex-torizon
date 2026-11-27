@@ -78,11 +78,16 @@ IMAGE_INSTALL:append = " optee-client"
 LIBDRAM_BOARD_NAME:lec-mtk1200 = "${@bb.utils.contains('DISTRO_FEATURES', 'nda-mtk', 'genio-1200-evk-ufs', 'genio-1200-evk', d)}"
 
 # --- Image / flash integration ----------------------------------------------
-# Torizon OSTree layout: FIP bootloader + single ext4 OSTree sysroot, no /boot
-# partition. The vendor mediatek-bootimg.wks fails do_image_wic once
-# IMAGE_BOOT_FILES is empty, so use the OSTree wks (matches the genio-flash
-# partition table: bootloaders + rootfs).
+# Torizon OSTree layout: A/B FIP bootloader + single ext4 OSTree sysroot, no
+# /boot partition. The vendor mediatek-bootimg.wks fails do_image_wic once
+# IMAGE_BOOT_FILES is empty, so use the OSTree wks.
 WKS_FILE:sota = "torizon-mtk-sota.wks"
+
+# A/B firmware image package: BL2 boots the FIP from "bootloaders" or
+# "bootloaders_b" as the record in "misc" selects, and U-Boot marks the slot
+# good at kernel hand-off. Set directly rather than through MediaTek's
+# "fwupdate" distro feature, which also builds UEFI capsules.
+AB_FWUPDATE_ENABLE = "1"
 
 # Mask meta-adlink-mtk bbappends for recipes provided only by meta-rity and
 # board-assets, which Torizon does not use.

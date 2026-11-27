@@ -1,0 +1,53 @@
+From: Vladimir Skvortsov <vskvortsov@emcraft.com>
+Date: Wed, 25 Nov 2026 17:10:00 +0100
+Subject: [PATCH] mt8195: reset on a BL2 error or panic with A/B boot
+
+With A/B boot, BL2 counts each boot as a try of the selected firmware
+image package slot before loading it, and switches to the other slot
+after the last try. The default error and panic handlers halt with the
+watchdog off, so every further try needs a power cycle. Reset the SoC
+through the watchdog instead, so a slot that fails to load or
+authenticate falls back on its own.
+
+Upstream-Status: Pending
+Signed-off-by: Vladimir Skvortsov <vskvortsov@emcraft.com>
+---
+--- a/plat/mediatek/mt8195/bl2_plat_setup.c
++++ b/plat/mediatek/mt8195/bl2_plat_setup.c
+@@ -31,6 +31,7 @@
+ #include <mtk_plat_common.h>
+ #include <pmic_initial_setting.h>
+ #if defined(PLAT_AB_BOOT_ENABLE)
++#include <arch_helpers.h>
+ #include <mtk_ab.h>
+ #endif
+ 
+@@ -519,3 +520,28 @@
+ 	}
+ 	return 0;
+ }
++
++#if defined(PLAT_AB_BOOT_ENABLE)
++/* The failed boot already counts as a try of the FIP slot, so reset, not hang. */
++static void __dead2 mtk_wdt_reset(void)
++{
++	console_flush();
++	mmio_setbits_32((uintptr_t)&mtk_wdt->wdt_mode,
++			MTK_WDT_MODE_EXTEN | MTK_WDT_MODE_KEY);
++	mmio_write_32((uintptr_t)&mtk_wdt->wdt_swrst, MTK_WDT_SWRST_KEY);
++	while (1)
++		wfi();
++}
++
++void __dead2 plat_error_handler(int err)
++{
++	ERROR("BL2: error %d, resetting\n", err);
++	mtk_wdt_reset();
++}
++
++void __dead2 plat_panic_handler(void)
++{
++	ERROR("BL2: panic, resetting\n");
++	mtk_wdt_reset();
++}
++#endif
