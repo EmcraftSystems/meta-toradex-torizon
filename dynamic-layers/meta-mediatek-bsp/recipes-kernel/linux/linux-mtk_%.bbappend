@@ -15,6 +15,11 @@ WARN_QA:remove = "buildpaths"
 # files become the OSTree oe.kernel-source metadata.
 require recipes-kernel/linux/linux-torizon.inc
 
+# The vendor defconfig does not build the mainline driver for the on-module
+# Wi-Fi.
+FILESEXTRAPATHS:prepend := "${THISDIR}/linux-mtk:"
+SRC_URI:append:lec-mtk1200 = " file://lec-mtk1200-wifi.cfg"
+
 # The vendor points KBUILD_DEFCONFIG at the kernel's generic arm64 defconfig, so
 # do_kernel_configme merges every fragment onto that and the vendor
 # do_copy_defconfig then overwrites the result with ADLINK's defconfig - which is

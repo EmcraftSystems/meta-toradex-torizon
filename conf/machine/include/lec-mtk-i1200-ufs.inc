@@ -55,3 +55,7 @@ IMAGE_INSTALL:append = " rtw88"
 # Socket-tied naming for USB wireless interfaces (recipes-bsp/usb-wifi-naming);
 # the name must be fixed to the SMARC socket, identical on every unit.
 IMAGE_INSTALL:append = " usb-wifi-naming"
+
+# Firmware for the on-module 88W8997 Wi-Fi/Bluetooth radio; mwifiex picks the
+# file from the module's host-interface strap.
+IMAGE_INSTALL:append = " linux-firmware-pcie8997"
