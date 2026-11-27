@@ -29,13 +29,17 @@ req_program "/usr/bin/cat"         && alias CAT="$_"
 req_program "/usr/bin/dd"          && alias DD="$_"
 req_program "/usr/bin/fw_printenv" && alias FW_PRINTENV="$_"
 req_program "/usr/bin/fw_setenv"   && alias FW_SETENV="$_"
+req_program "/usr/bin/gzip"        && alias GZIP="$_"
+req_program "/usr/bin/head"        && alias HEAD="$_"
 req_program "/usr/bin/jq"          && alias JQ="$_"
 req_program "/usr/bin/lsblk"       && alias LSBLK="$_"
 req_program "/usr/bin/mmc"         && alias MMC="$_"
+req_program "/usr/bin/od"          && alias OD="$_"
 req_program "/usr/bin/rm"          && alias RM="$_"
 req_program "/usr/bin/sed"         && alias SED="$_"
 req_program "/usr/sbin/reboot"     && alias REBOOT="$_"
 req_program "/usr/bin/stat"        && alias STAT="$_"
+req_program "/usr/bin/tail"        && alias TAIL="$_"
 req_program "/usr/bin/tr"          && alias TR="$_"
 
 maybe_run() {
@@ -291,9 +295,160 @@ update_uboot_vars() {
     return $setenv_res
 }
 
+# ---
+# A/B slots in GPT partitions (MediaTek Genio): BL2 boots the firmware image
+# package from the slot that the boot-control record in partition "misc" names,
+# and U-Boot marks that slot good before starting the kernel.
+# ---
+
+# Record, little-endian: slot (u32), magic 0x544F494D (u32), version (u8), tries
+# of slot A and slot B (u8 each, 0 = good), 13 zero bytes, CRC-32 of bytes 0-23.
+BCTRL_SLOT_PARTS=(bootloaders bootloaders_b)
+BCTRL_BLOCK=4096
+
+# $1: disk device name (without /dev/), $2: partition label
+# output: partition device, or nothing if the disk has no such partition
+get_disk_part() {
+    local name=$(LSBLK -nro NAME,PARTLABEL "/dev/$1" | SED -n "s/^\([^ ]*\) $2\$/\1/p")
+    [ -n "$name" ] && echo "/dev/$name"
+    return 0
+}
+
+has_gpt_slots() {
+    local disk=$(get_emmc_dev)
+    [ -n "$(get_disk_part "$disk" misc)" ] && [ -n "$(get_disk_part "$disk" bootloaders_b)" ]
+}
+
+# $@: byte values; output: the bytes
+put_bytes() {
+    local b
+    for b in "$@"; do printf "\\$(printf '%03o' "$b")"; done
+}
+
+# $@: byte values; output: their CRC-32 as 4 bytes, little-endian (gzip trailer)
+bctrl_crc() {
+    put_bytes "$@" | GZIP -c | TAIL -c 8 | HEAD -c 4
+}
+
+# $1: misc partition; sets BCTRL to the 28 byte values of a valid record
+read_bctrl() {
+    local raw=$(DD if="$1" bs=$BCTRL_BLOCK count=1 iflag=direct 2>/dev/null | HEAD -c 28 | OD -An -v -tu1)
+    BCTRL=($raw)
+    [ "${#BCTRL[@]}" -eq 28 ] || return 1
+    [ "${BCTRL[*]:1:7}" = "0 0 0 77 73 79 84" ] || return 1
+    [ "${BCTRL[0]}" = "0" -o "${BCTRL[0]}" = "1" ] || return 1
+    local crc=$(bctrl_crc "${BCTRL[@]:0:24}" | OD -An -v -tu1)
+    [ "$(echo $crc)" = "${BCTRL[*]:24:4}" ]
+}
+
+# $1: misc partition, $2: slot, $3: tries of slot A, $4: tries of slot B
+write_bctrl() {
+    local rec=("$2" 0 0 0 77 73 79 84 1 "$3" "$4" 0 0 0 0 0 0 0 0 0 0 0 0 0)
+    { put_bytes "${rec[@]}"; bctrl_crc "${rec[@]}"; HEAD -c $((BCTRL_BLOCK - 28)) /dev/zero; } |
+        maybe_run DD of="$1" bs=$BCTRL_BLOCK count=1 iflag=fullblock oflag=direct,dsync 2>/dev/null
+}
+
+do_install_gpt() {
+    [ -n "$SECONDARY_FIRMWARE_PATH" ]   || die "SECONDARY_FIRMWARE_PATH is not set"
+    [ -n "$SECONDARY_FIRMWARE_SHA256" ] || die "SECONDARY_FIRMWARE_SHA256 is not set"
+    local disk=$(get_emmc_dev)
+    local misc=$(get_disk_part "$disk" misc)
+    read_bctrl "$misc" || die "Invalid boot control record in $misc"
+    local cur_slot="${BCTRL[0]}"
+    # Writing the other slot while this one is unproven would leave no known-good package.
+    [ "${BCTRL[$((9 + cur_slot))]}" = "0" ] || die "Slot ${BCTRL_SLOT_PARTS[$cur_slot]} is not marked good"
+    local new_slot=$((1 - cur_slot))
+    local new_part=$(get_disk_part "$disk" "${BCTRL_SLOT_PARTS[$new_slot]}")
+    [ -n "$new_part" ] || die "Cannot find partition ${BCTRL_SLOT_PARTS[$new_slot]}"
+
+    log "Starting installation of bootloader into GPT slot ${BCTRL_SLOT_PARTS[$new_slot]}"
+    log "Boot control: ${BCTRL[*]:0:11}"
+
+    # 1: Check that binary about to be flashed has expected SHA-256 (safeguard).
+    check_target_sha256
+
+    # 2: Write the inactive slot; the record still names the active one.
+    maybe_run DD if="$SECONDARY_FIRMWARE_PATH" of="$new_part" bs=$BCTRL_BLOCK conv=fdatasync 2>/dev/null ||
+        die "Could not write to $new_part"
+
+    # 3: Verify data from the partition, bypassing the page cache.
+    local fwsize=$(get_file_size "$SECONDARY_FIRMWARE_PATH")
+    local part_sha256=$(DD if="$new_part" bs=$BCTRL_BLOCK count=$(((fwsize + BCTRL_BLOCK - 1) / BCTRL_BLOCK)) \
+                           iflag=direct 2>/dev/null | HEAD -c "$fwsize" | SHA256SUM |
+                        SED -Ene 's/^\s*([0-9a-f]{64})\s*.*$/\1/p')
+    if [ "$DRY_RUN" = "1" ]; then
+        log "Ignoring actual partition digest in dry-run mode"
+    elif [ "$part_sha256" = "$SECONDARY_FIRMWARE_SHA256" ]; then
+        log "Partition data passed SHA-256 check"
+    else
+        die "SHA-256 mismatch for data in partition (actual: ${part_sha256:0:12}..., exp.: ${SECONDARY_FIRMWARE_SHA256:0:12}...)"
+    fi
+
+    # 4: Set u-boot environment variables; bl_prev_csdpart is the old slot plus one.
+    update_uboot_vars bl_prev_csdpart "$((cur_slot + 1))" \
+                      bl_updt_status "attempt" \
+                      bootcount "0" \
+                      upgrade_available "1" || die "Could not set u-boot environment"
+
+    # 5: Point the record at the new slot with one try; BL2 falls back after eight failed boots.
+    if [ "$DRY_RUN" = "2" ]; then
+        log "Not switching slot in dry-run mode"
+    else
+        local tries_a="${BCTRL[9]}" tries_b="${BCTRL[10]}"
+        [ "$new_slot" = "0" ] && tries_a=1 || tries_b=1
+        if ! write_bctrl "$misc" "$new_slot" "$tries_a" "$tries_b"; then
+            clean_uboot_vars
+            die "Could not write the boot control record"
+        fi
+    fi
+
+    # 6: Request a reboot.
+    if [ "$DRY_RUN" = "2" ]; then
+        log "Not rebooting in dry-run mode"
+    else
+        maybe_run TOUCH "${REBOOT_SENTINEL_FILE}" 2>/dev/null
+        if  [ "$?" -ne 0 ]; then
+            log "Could not create reboot sentinel file; falling back to normal reboot"
+            maybe_run REBOOT 2>/dev/null
+            [ "$?" -eq 0 ] || log "Could not schedule reboot"
+        fi
+    fi
+
+    echo '{"status": "need-completion", "message": "rebooting soon"}'
+    return 0
+}
+
+# The update succeeded if the new slot booted and U-Boot marked it good; otherwise
+# BL2 has already fallen back to the old slot and nothing needs switching.
+do_complete_install_gpt() {
+    local disk=$(get_emmc_dev)
+    local misc=$(get_disk_part "$disk" misc)
+    read_bctrl "$misc" || die "Invalid boot control record in $misc"
+    local prev_partnum=$(get_prev_csdpart)
+    local new_slot=$((2 - prev_partnum))
+
+    log "Finishing installation of bootloader into GPT slot ${BCTRL_SLOT_PARTS[$new_slot]}"
+    log "Boot control: ${BCTRL[*]:0:11}"
+
+    clean_uboot_vars
+    if [ "${BCTRL[0]}" = "$new_slot" -a "${BCTRL[$((9 + new_slot))]}" = "0" ]; then
+        log "Successfully updated bootloader"
+        echo '{"status": "ok", "message": "bootloader update succeeded"}'
+    else
+        log "Failed to update bootloader; running from the previous slot"
+        echo '{"status": "failed", "message": "bootloader update failed"}'
+    fi
+    return 0
+}
+
 do_install() {
     # Note: if die is called from this point on the die handler will be called.
     before_dying 'on_install_failed'
+
+    if has_gpt_slots; then
+        do_install_gpt
+        return
+    fi
 
     check_install_vars
     local emmc_dev=$(get_emmc_dev)
@@ -418,6 +573,11 @@ do_complete_install() {
     # Note: if die is called from this point on the die handler will be called.; any failure here
     # will send a status of 'failed' to aktualizr (see 'on_install_failed()')
     before_dying 'on_install_failed'
+
+    if has_gpt_slots; then
+        do_complete_install_gpt
+        return
+    fi
 
     check_install_vars
     local emmc_dev=$(get_emmc_dev)
