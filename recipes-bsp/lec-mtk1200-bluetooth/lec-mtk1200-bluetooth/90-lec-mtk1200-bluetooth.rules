@@ -1,0 +1,7 @@
+# HCI UART of the on-module radio: an on-module FT230X USB-to-UART bridge on
+# SoC USB controller 1, which reaches no carrier socket.
+SUBSYSTEM=="tty", ENV{ID_PATH}=="platform-11290000.usb-usb-0:1:1.0", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6015", SYMLINK+="ttyBTmodule", TAG+="systemd"
+
+# The controller answers only once the Wi-Fi driver has loaded the combo
+# firmware, and its network interface appears only after that.
+SUBSYSTEM=="net", DRIVERS=="mwifiex_pcie", TAG+="systemd", ENV{SYSTEMD_WANTS}+="lec-mtk1200-bluetooth.service"

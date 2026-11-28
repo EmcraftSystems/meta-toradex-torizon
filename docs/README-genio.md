@@ -134,6 +134,54 @@ torizon-lec-mtk-i1200-ufs login:
 ```
 4. Login to the board using the `torizon/torizon` credentials.
 
+Wi-Fi and Bluetooth
+======
+The `BW` variants of the LEC-MTK-i1200 carry an NXP 88W8997 radio: Wi-Fi on
+PCIe, Bluetooth on a UART. The image supports both. On a module without the
+radio there is no Wi-Fi interface, and the Bluetooth service is not started.
+
+Both radios need the module's antennas. The Wi-Fi radio is 2x2 and sends on
+both chains, so fit both Wi-Fi antennas.
+
+Wi-Fi
+------
+The mainline `mwifiex_pcie` driver loads at boot, with the firmware from
+`linux-firmware-pcie8997`. The interface is `wlp1s0`; `nmcli device` lists it.
+NetworkManager manages it:
+```
+# sudo nmcli device wifi list
+# sudo nmcli device wifi connect <SSID> password <PASSPHRASE> ifname wlp1s0
+```
+NetworkManager saves the connection and joins the network again after a reboot.
+
+The driver does not support WPA3-Personal (SAE). Use a WPA2 network, or one
+in WPA2/WPA3 transition mode.
+
+The vendor kernel patch also builds NXP's `mlan`/`moal` driver. It is not
+loaded.
+
+Bluetooth
+------
+`lec-mtk1200-bluetooth.service` attaches the controller once the Wi-Fi driver
+has loaded the radio firmware, and BlueZ handles it from there. Power the
+controller on, then scan and pair with `bluetoothctl`:
+```
+# bluetoothctl power on
+# bluetoothctl
+[bluetooth]# scan bredr
+[bluetooth]# pair <ADDRESS>
+```
+`scan bredr` and `scan le` limit a scan to Bluetooth Classic or Low Energy.
+
+The controller's UART runs at 115200 baud, which limits Bluetooth throughput
+to about 11 kB/s.
+
+The UART reaches the SoC through an on-module USB-to-UART bridge, which also
+appears as a `/dev/ttyUSB*` port, linked as `/dev/ttyBTmodule`. Do not open
+it. The carrier's SER2 port is a bridge of the same kind, so address either one
+by its path under `/dev/serial/by-path/` or by this link, not by its
+`ttyUSB` number.
+
 Customizing with TorizonCore Builder
 ======
 The Genio target ships as an `aiotflash.tar` wrapping an Android-sparse WIC,
