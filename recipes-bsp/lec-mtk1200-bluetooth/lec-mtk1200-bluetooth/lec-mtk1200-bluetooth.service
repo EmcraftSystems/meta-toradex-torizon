@@ -1,0 +1,9 @@
+[Unit]
+Description=Attach the on-module Bluetooth controller
+BindsTo=dev-ttyBTmodule.device
+After=dev-ttyBTmodule.device
+
+[Service]
+ExecStart=/usr/bin/btattach -B /dev/ttyBTmodule -P h4 -S 115200
+Restart=on-failure
+RestartSec=2

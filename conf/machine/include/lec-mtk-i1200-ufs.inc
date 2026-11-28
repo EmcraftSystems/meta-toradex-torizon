@@ -59,3 +59,7 @@ IMAGE_INSTALL:append = " usb-wifi-naming"
 # Firmware for the on-module 88W8997 Wi-Fi/Bluetooth radio; mwifiex picks the
 # file from the module's host-interface strap.
 IMAGE_INSTALL:append = " linux-firmware-pcie8997"
+
+# The radio's Bluetooth is HCI over a UART, attached from userspace
+# (recipes-bsp/lec-mtk1200-bluetooth).
+IMAGE_INSTALL:append = " lec-mtk1200-bluetooth"
